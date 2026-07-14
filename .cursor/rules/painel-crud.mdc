@@ -1,0 +1,31 @@
+---
+description: Padrão CRUD obrigatório nas telas do painel EducaMoney
+globs: frontend-admin/**/*
+alwaysApply: true
+---
+
+# Painel — CRUD obrigatório
+
+Toda tela do `frontend-admin` que gerencia entidades com criação deve seguir CRUD completo:
+
+| Operação | UI |
+|----------|-----|
+| **R** (listar) | Tabela |
+| **C** (criar) | Modal + botão **Novo** |
+| **U** (editar) | Modal aberto por **Editar** na linha |
+| **D** (remover) | Botão **Excluir** na linha (soft-delete/`ativo=false` / `is_active=false` quando aplicável) |
+
+## Proibido
+
+- Formulário de criar/editar inline na página (fora do modal)
+- Só lista sem Novo/Editar/Excluir quando o recurso tem CRUD
+
+## Exceções
+
+- **Dashboard** — só leitura de métricas
+- **Tokens** — C no modal (Gerar), D = **Revogar** (sem editar código)
+- **Integração WhatsApp** — CRUD completo; criar pede telefone `+55…` e mensagem com variáveis `{titulo_plano}`, `{valor_plano}`, `{nome_site}`
+
+## Componentes
+
+Preferir `Modal` e confirmação antes de Excluir/Revogar.

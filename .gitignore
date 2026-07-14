@@ -1,0 +1,44 @@
+# Ambiente
+.env
+.env.local
+*.local
+
+# Python / Django
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+*.egg-info/
+.eggs/
+dist/
+build/
+*.log
+db.sqlite3
+staticfiles/
+media/
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+.npm
+.yarn/
+
+# IDE / SO
+.idea/
+.vscode/
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
+*.swp
+.DS_Store
+Thumbs.db
+
+# Docker
+*.pid
+
+# Uploads Django
+backend/media/

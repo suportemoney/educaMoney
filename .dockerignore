@@ -1,0 +1,14 @@
+# Build do backend a partir da raiz do repositório
+.git/modules
+**/__pycache__
+**/*.pyc
+**/.venv
+**/venv
+**/node_modules
+frontend/dist
+frontend/node_modules
+backend/staticfiles
+backend/media
+.env
+**/.pytest_cache
+**/*.log

@@ -38,7 +38,9 @@ export function AtivacoesPage() {
   const [filtroPlano, setFiltroPlano] = useState("");
   const [estenderSel, setEstenderSel] = useState<AtivacaoAdmin | null>(null);
   const [upgradeSel, setUpgradeSel] = useState<AtivacaoAdmin | null>(null);
+  const [modoPrazo, setModoPrazo] = useState<"dias" | "data">("data");
   const [dias, setDias] = useState(30);
+  const [dataPrazo, setDataPrazo] = useState("");
   const [planoDestinoId, setPlanoDestinoId] = useState<number | "">("");
   const [salvando, setSalvando] = useState(false);
 
@@ -81,8 +83,34 @@ export function AtivacoesPage() {
     return previewValorUpgrade(origem, destino, upgradeSel.valido_ate);
   }, [upgradeSel, planoDestinoId, planos]);
 
+  function abrirEditarPrazo(a: AtivacaoAdmin) {
+    setDias(30);
+    setModoPrazo(a.valido_ate ? "dias" : "data");
+    if (a.valido_ate) {
+      const d = new Date(a.valido_ate);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      setDataPrazo(`${y}-${m}-${day}`);
+    } else {
+      // Sugere duração do plano a partir de hoje
+      const plano = planos.find((p) => p.id === a.plano);
+      const sug = new Date();
+      sug.setDate(sug.getDate() + (plano?.duracao_dias || 30));
+      const y = sug.getFullYear();
+      const m = String(sug.getMonth() + 1).padStart(2, "0");
+      const day = String(sug.getDate()).padStart(2, "0");
+      setDataPrazo(`${y}-${m}-${day}`);
+    }
+    setEstenderSel(a);
+  }
+
   function previewNovaData(): string {
     if (!estenderSel) return "—";
+    if (modoPrazo === "data" && dataPrazo) {
+      const [y, m, d] = dataPrazo.split("-").map(Number);
+      return new Date(y, m - 1, d).toLocaleDateString("pt-BR");
+    }
     const agora = new Date();
     const base =
       estenderSel.valido_ate && new Date(estenderSel.valido_ate) > agora
@@ -98,15 +126,19 @@ export function AtivacoesPage() {
     setSalvando(true);
     setErro(null);
     try {
+      const body =
+        modoPrazo === "data"
+          ? { valido_ate: new Date(`${dataPrazo}T23:59:59`).toISOString() }
+          : { dias };
       await apiRequest(`/admin/ativacoes/${estenderSel.id}/estender/`, {
         method: "POST",
         token: access,
-        body: { dias },
+        body,
       });
       setEstenderSel(null);
       await carregar();
     } catch (e) {
-      setErro(e instanceof Error ? e.message : "Falha ao estender");
+      setErro(e instanceof Error ? e.message : "Falha ao salvar prazo");
     } finally {
       setSalvando(false);
     }
@@ -241,12 +273,9 @@ export function AtivacoesPage() {
                       <button
                         type="button"
                         className="btn btn--ghost btn--small"
-                        onClick={() => {
-                          setDias(30);
-                          setEstenderSel(a);
-                        }}
+                        onClick={() => abrirEditarPrazo(a)}
                       >
-                        Estender
+                        Prazo
                       </button>
                       <button
                         type="button"
@@ -274,7 +303,7 @@ export function AtivacoesPage() {
 
       <Modal
         aberto={!!estenderSel}
-        titulo="Estender validade"
+        titulo="Editar validade"
         onFechar={() => setEstenderSel(null)}
       >
         {estenderSel && (
@@ -288,22 +317,47 @@ export function AtivacoesPage() {
                 : "sem prazo"}
             </p>
             <label>
-              Dias a adicionar
-              <input
-                type="number"
-                min={1}
-                value={dias}
-                onChange={(e) => setDias(Number(e.target.value))}
-              />
+              Como definir
+              <select
+                value={modoPrazo}
+                onChange={(e) => setModoPrazo(e.target.value as "dias" | "data")}
+              >
+                <option value="data">Data de vencimento</option>
+                <option value="dias">Somar dias</option>
+              </select>
             </label>
-            <p className="page-lead">Nova data prevista: {previewNovaData()}</p>
+            {modoPrazo === "data" ? (
+              <label>
+                Válido até
+                <input
+                  type="date"
+                  value={dataPrazo}
+                  onChange={(e) => setDataPrazo(e.target.value)}
+                  required
+                />
+              </label>
+            ) : (
+              <label>
+                Dias a adicionar
+                <input
+                  type="number"
+                  min={1}
+                  value={dias}
+                  onChange={(e) => setDias(Number(e.target.value))}
+                />
+              </label>
+            )}
+            <p className="page-lead">Nova data: {previewNovaData()}</p>
             <button
               type="button"
               className="btn btn--primary"
               onClick={confirmarEstender}
-              disabled={salvando || dias < 1}
+              disabled={
+                salvando ||
+                (modoPrazo === "dias" ? dias < 1 : !dataPrazo)
+              }
             >
-              {salvando ? "Salvando…" : "Confirmar"}
+              {salvando ? "Salvando…" : "Salvar prazo"}
             </button>
           </div>
         )}
@@ -329,7 +383,7 @@ export function AtivacoesPage() {
             </p>
             {!upgradeSel.valido_ate && (
               <p className="form-erro">
-                Defina um vencimento (Estender) antes de fazer upgrade.
+                Defina um vencimento (botão Prazo) antes de fazer upgrade.
               </p>
             )}
             <label>

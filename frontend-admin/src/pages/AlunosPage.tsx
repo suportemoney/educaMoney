@@ -35,6 +35,8 @@ export function AlunosPage() {
   const [editando, setEditando] = useState<AlunoAdmin | null>(null);
   const [form, setForm] = useState(FORM_VAZIO);
   const [dias, setDias] = useState(30);
+  const [dataPrazo, setDataPrazo] = useState("");
+  const [modoPrazo, setModoPrazo] = useState<"dias" | "data">("data");
   const [upgradeAtivacaoId, setUpgradeAtivacaoId] = useState<number | null>(null);
   const [planoUpgradeId, setPlanoUpgradeId] = useState<number | "">("");
   const [salvando, setSalvando] = useState(false);
@@ -147,18 +149,35 @@ export function AlunosPage() {
   }
 
   async function estender(ativacaoId: number) {
-    if (!access || !confirm(`Estender ativação em ${dias} dias?`)) return;
+    if (!access) return;
+    if (modoPrazo === "data" && !dataPrazo) {
+      setErro("Informe a data de validade.");
+      return;
+    }
+    if (modoPrazo === "dias" && dias < 1) {
+      setErro("Informe os dias a adicionar.");
+      return;
+    }
+    const msg =
+      modoPrazo === "data"
+        ? `Definir validade até ${new Date(dataPrazo + "T12:00:00").toLocaleDateString("pt-BR")}?`
+        : `Estender ativação em ${dias} dias?`;
+    if (!confirm(msg)) return;
     setSalvando(true);
     try {
+      const body =
+        modoPrazo === "data"
+          ? { valido_ate: new Date(`${dataPrazo}T23:59:59`).toISOString() }
+          : { dias };
       await apiRequest(`/admin/ativacoes/${ativacaoId}/estender/`, {
         method: "POST",
         token: access,
-        body: { dias },
+        body,
       });
       if (detalhe) await abrirDetalhe(detalhe.id);
       await carregar();
     } catch (e) {
-      setErro(e instanceof Error ? e.message : "Falha ao estender");
+      setErro(e instanceof Error ? e.message : "Falha ao salvar prazo");
     } finally {
       setSalvando(false);
     }
@@ -418,21 +437,42 @@ export function AlunosPage() {
                       : "sem prazo"}
                   </div>
                   <label>
-                    Dias a estender
-                    <input
-                      type="number"
-                      min={1}
-                      value={dias}
-                      onChange={(e) => setDias(Number(e.target.value))}
-                    />
+                    Como definir prazo
+                    <select
+                      value={modoPrazo}
+                      onChange={(e) => setModoPrazo(e.target.value as "dias" | "data")}
+                    >
+                      <option value="data">Data de vencimento</option>
+                      <option value="dias">Somar dias</option>
+                    </select>
                   </label>
+                  {modoPrazo === "data" ? (
+                    <label>
+                      Válido até
+                      <input
+                        type="date"
+                        value={dataPrazo}
+                        onChange={(e) => setDataPrazo(e.target.value)}
+                      />
+                    </label>
+                  ) : (
+                    <label>
+                      Dias a estender
+                      <input
+                        type="number"
+                        min={1}
+                        value={dias}
+                        onChange={(e) => setDias(Number(e.target.value))}
+                      />
+                    </label>
+                  )}
                   <button
                     type="button"
                     className="btn btn--primary btn--small"
                     onClick={() => estender(at.id)}
                     disabled={salvando}
                   >
-                    Estender
+                    Salvar prazo
                   </button>
                   {at.valido_ate && opcoesUpgrade.length > 0 && (
                     <>

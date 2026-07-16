@@ -268,12 +268,30 @@ class TokenKey(models.Model):
         USADO = "usado", "Usado"
         REVOGADO = "revogado", "Revogado"
 
+    class Origem(models.TextChoices):
+        GERADO = "gerado", "Gerado"
+        UPGRADE = "upgrade", "Upgrade"
+
     codigo = models.CharField("código", max_length=32, unique=True)
     plano = models.ForeignKey(
         Plano, on_delete=models.PROTECT, related_name="tokens", verbose_name="plano"
     )
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.DISPONIVEL
+    )
+    origem = models.CharField(
+        max_length=20,
+        choices=Origem.choices,
+        default=Origem.GERADO,
+        help_text="Como o token foi criado (manual ou upgrade de plano).",
+    )
+    valor_proporcional = models.DecimalField(
+        "valor proporcional",
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Valor diferencial cobrado em upgrade; vazio = token de preço cheio.",
     )
     criado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,

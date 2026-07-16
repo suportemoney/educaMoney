@@ -661,7 +661,27 @@ a {
   color: var(--em-green);
 }
 
-.badge--merchant {
+.badge--ok {
+  color: var(--em-green);
+  border-color: rgba(52, 211, 153, 0.45);
+}
+
+.badge--off {
+  color: var(--em-muted);
+  border-color: var(--em-line);
+}
+
+.badge--token-disponivel {
+  color: var(--em-green);
+  border-color: rgba(52, 211, 153, 0.45);
+}
+
+.badge--token-usado {
+  color: #7ec8ff;
+  border-color: rgba(126, 200, 255, 0.45);
+}
+
+.badge--token-revogado {
   color: #f9a8d4;
   border-color: rgba(249, 168, 212, 0.45);
 }

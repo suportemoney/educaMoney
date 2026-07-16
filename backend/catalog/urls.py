@@ -50,6 +50,7 @@ from .lms_admin_views import (
 from .p9_admin_views import (
     AdminAtivacaoEstenderView,
     AdminAtivacaoListView,
+    AdminAtivacaoUpgradeView,
     AdminCategoriaDetailView,
     AdminCategoriaListCreateView,
     AdminConjuntoDetailView,
@@ -206,6 +207,11 @@ admin_urlpatterns = [
         "ativacoes/<int:pk>/estender/",
         AdminAtivacaoEstenderView.as_view(),
         name="admin-ativacao-estender",
+    ),
+    path(
+        "ativacoes/<int:pk>/upgrade/",
+        AdminAtivacaoUpgradeView.as_view(),
+        name="admin-ativacao-upgrade",
     ),
     path("tickets/", AdminTicketListView.as_view(), name="admin-tickets"),
     path(

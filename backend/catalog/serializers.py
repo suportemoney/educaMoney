@@ -307,6 +307,8 @@ class TokenKeySerializer(serializers.ModelSerializer):
             "plano",
             "plano_nome",
             "status",
+            "origem",
+            "valor_proporcional",
             "criado_por",
             "criado_por_nome",
             "criado_em",
@@ -317,6 +319,8 @@ class TokenKeySerializer(serializers.ModelSerializer):
         read_only_fields = (
             "codigo",
             "status",
+            "origem",
+            "valor_proporcional",
             "criado_por",
             "criado_em",
             "usado_por",
@@ -739,6 +743,13 @@ class EstenderAtivacaoSerializer(serializers.Serializer):
         if not attrs.get("dias") and not attrs.get("valido_ate"):
             raise serializers.ValidationError("Informe dias ou valido_ate.")
         return attrs
+
+
+class UpgradeAtivacaoSerializer(serializers.Serializer):
+    plano_id = serializers.PrimaryKeyRelatedField(
+        queryset=Plano.objects.filter(ativo=True),
+        source="plano",
+    )
 
 
 class ConjuntoAlunoSerializer(serializers.ModelSerializer):

@@ -1,7 +1,11 @@
-"""Views admin P9 — categorias, conjuntos, tickets, estender ativação."""
+"""Views admin P9 — categorias, conjuntos, tickets, estender/upgrade ativação."""
 
 from datetime import timedelta
+from decimal import Decimal, ROUND_HALF_UP
+from math import ceil
 
+from django.db import transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.text import slugify
@@ -12,7 +16,8 @@ from rest_framework.views import APIView
 
 from accounts.permissions import IsAdminOrGestor, IsMerchantOrAbove, IsPROrAbove
 
-from .models import Ativacao, Categoria, Conjunto, Subcategoria, TicketSecretaria
+from .admin_views import _gerar_codigo_token
+from .models import Ativacao, Categoria, Conjunto, Plano, Subcategoria, TicketSecretaria, TokenKey
 from .serializers import (
     AtivacaoSerializer,
     CategoriaSerializer,
@@ -20,6 +25,7 @@ from .serializers import (
     EstenderAtivacaoSerializer,
     SubcategoriaSerializer,
     TicketSecretariaSerializer,
+    UpgradeAtivacaoSerializer,
 )
 
 
@@ -175,8 +181,30 @@ class AdminAtivacaoListView(APIView):
     def get(self, request):
         qs = Ativacao.objects.select_related(
             "plano", "token_key", "usuario"
-        ).order_by("-data_ativacao")[:200]
-        return Response(AtivacaoSerializer(qs, many=True).data)
+        ).order_by("-data_ativacao")
+        busca = (request.query_params.get("q") or "").strip()
+        if busca:
+            qs = qs.filter(
+                Q(usuario__first_name__icontains=busca)
+                | Q(usuario__username__icontains=busca)
+                | Q(usuario__email__icontains=busca)
+                | Q(token_key__codigo__icontains=busca)
+            )
+        plano_id = (request.query_params.get("plano_id") or "").strip()
+        if plano_id.isdigit():
+            qs = qs.filter(plano_id=int(plano_id))
+        vigente = request.query_params.get("vigente")
+        agora = timezone.now()
+        if vigente == "1":
+            qs = qs.filter(ativo=True).filter(
+                Q(valido_ate__isnull=True) | Q(valido_ate__gte=agora)
+            )
+        elif vigente == "0":
+            qs = qs.filter(
+                Q(ativo=False)
+                | Q(valido_ate__isnull=False, valido_ate__lt=agora)
+            )
+        return Response(AtivacaoSerializer(qs[:200], many=True).data)
 
 
 class AdminAtivacaoEstenderView(APIView):
@@ -197,6 +225,108 @@ class AdminAtivacaoEstenderView(APIView):
         ativ.ativo = True
         ativ.save(update_fields=["valido_ate", "renovado_em", "ativo"])
         return Response(AtivacaoSerializer(ativ).data)
+
+
+def _calcular_valor_upgrade(plano_origem: Plano, plano_destino: Plano, dias_restantes: int) -> Decimal:
+    """Diferença de preço proporcional aos dias restantes do ciclo de origem."""
+    preco_antigo = Decimal(plano_origem.preco_referencia)
+    preco_novo = Decimal(plano_destino.preco_referencia)
+    duracao = max(1, int(plano_origem.duracao_dias or 1))
+    diff = preco_novo - preco_antigo
+    if diff <= 0:
+        return Decimal("0.00")
+    valor = (diff * Decimal(dias_restantes)) / Decimal(duracao)
+    return valor.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+class AdminAtivacaoUpgradeView(APIView):
+    """Troca plano vigente mantendo o mesmo vencimento; gera token usado com valor B."""
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrGestor]
+
+    def post(self, request, pk):
+        ativ = get_object_or_404(
+            Ativacao.objects.select_related("plano", "usuario", "token_key"),
+            pk=pk,
+        )
+        agora = timezone.now()
+        if not ativ.ativo:
+            return Response(
+                {"detail": "Ativação não está ativa."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if ativ.valido_ate is None:
+            return Response(
+                {
+                    "detail": "Upgrade exige data de vencimento. Estenda ou defina valido_ate primeiro."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if ativ.valido_ate < agora:
+            return Response(
+                {"detail": "Ativação expirada; não é possível fazer upgrade."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ser = UpgradeAtivacaoSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        plano_destino = ser.validated_data["plano"]
+        plano_origem = ativ.plano
+
+        if plano_destino.id == plano_origem.id:
+            return Response(
+                {"detail": "Escolha um plano diferente do atual."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if Decimal(plano_destino.preco_referencia) <= Decimal(plano_origem.preco_referencia):
+            return Response(
+                {"detail": "Upgrade só para plano com preço maior que o atual."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        delta = ativ.valido_ate - agora
+        dias_restantes = max(0, ceil(delta.total_seconds() / 86400))
+        if dias_restantes < 1:
+            return Response(
+                {"detail": "Não há dias restantes suficientes para upgrade."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        valor = _calcular_valor_upgrade(plano_origem, plano_destino, dias_restantes)
+
+        with transaction.atomic():
+            codigo = _gerar_codigo_token()
+            token = TokenKey.objects.create(
+                codigo=codigo,
+                plano=plano_destino,
+                status=TokenKey.Status.USADO,
+                origem=TokenKey.Origem.UPGRADE,
+                valor_proporcional=valor,
+                criado_por=request.user,
+                usado_por=ativ.usuario,
+                usado_em=agora,
+            )
+            nova = Ativacao.objects.create(
+                usuario=ativ.usuario,
+                plano=plano_destino,
+                token_key=token,
+                ativo=True,
+                valido_ate=ativ.valido_ate,
+            )
+            ativ.ativo = False
+            ativ.save(update_fields=["ativo"])
+
+        data = AtivacaoSerializer(nova).data
+        return Response(
+            {
+                **data,
+                "valor_proporcional": str(valor),
+                "dias_restantes": dias_restantes,
+                "plano_origem_nome": plano_origem.nome,
+                "token_codigo": token.codigo,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class AdminTicketListView(APIView):

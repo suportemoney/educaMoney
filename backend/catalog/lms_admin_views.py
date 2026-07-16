@@ -149,6 +149,7 @@ def _serializar_aluno_detalhe(request, u):
     def _item_ativacao(a):
         return {
             "id": a.id,
+            "plano_id": a.plano_id,
             "plano_nome": a.plano.nome,
             "valido_ate": a.valido_ate,
             "ativo": a.ativo,

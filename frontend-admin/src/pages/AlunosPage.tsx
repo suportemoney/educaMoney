@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { apiRequest, type AlunoAdmin } from "../api/client";
+import { apiRequest, type AlunoAdmin, type Plano } from "../api/client";
 import { Modal } from "../components/Modal";
 import { useAuth } from "../context/AuthContext";
+import { previewValorUpgrade } from "./AtivacoesPage";
 
 function progressoMedio(a: AlunoAdmin): string {
   const lista = a.progresso || [];
@@ -24,6 +25,7 @@ const FORM_VAZIO = {
 export function AlunosPage() {
   const { access } = useAuth();
   const [itens, setItens] = useState<AlunoAdmin[]>([]);
+  const [planos, setPlanos] = useState<Plano[]>([]);
   const [q, setQ] = useState("");
   const [filtroAtivo, setFiltroAtivo] = useState("");
   const [comPlano, setComPlano] = useState(false);
@@ -33,6 +35,8 @@ export function AlunosPage() {
   const [editando, setEditando] = useState<AlunoAdmin | null>(null);
   const [form, setForm] = useState(FORM_VAZIO);
   const [dias, setDias] = useState(30);
+  const [upgradeAtivacaoId, setUpgradeAtivacaoId] = useState<number | null>(null);
+  const [planoUpgradeId, setPlanoUpgradeId] = useState<number | "">("");
   const [salvando, setSalvando] = useState(false);
 
   async function carregar() {
@@ -42,11 +46,14 @@ export function AlunosPage() {
     if (filtroAtivo) params.set("ativo", filtroAtivo);
     if (comPlano) params.set("com_plano", "1");
     const qs = params.toString();
-    const data = await apiRequest<AlunoAdmin[]>(
-      `/admin/alunos/${qs ? `?${qs}` : ""}`,
-      { token: access }
-    );
+    const [data, p] = await Promise.all([
+      apiRequest<AlunoAdmin[]>(`/admin/alunos/${qs ? `?${qs}` : ""}`, {
+        token: access,
+      }),
+      apiRequest<Plano[]>("/admin/planos/", { token: access }),
+    ]);
     setItens(data);
+    setPlanos(p);
   }
 
   useEffect(() => {
@@ -152,6 +159,27 @@ export function AlunosPage() {
       await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao estender");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function fazerUpgrade(ativacaoId: number) {
+    if (!access || !planoUpgradeId) return;
+    if (!confirm("Confirmar upgrade de plano com o mesmo vencimento?")) return;
+    setSalvando(true);
+    try {
+      await apiRequest(`/admin/ativacoes/${ativacaoId}/upgrade/`, {
+        method: "POST",
+        token: access,
+        body: { plano_id: planoUpgradeId },
+      });
+      setUpgradeAtivacaoId(null);
+      setPlanoUpgradeId("");
+      if (detalhe) await abrirDetalhe(detalhe.id);
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha no upgrade");
     } finally {
       setSalvando(false);
     }
@@ -364,33 +392,112 @@ export function AlunosPage() {
 
             <h3>Ativações vigentes</h3>
             {(detalhe.ativacoes || []).length === 0 && <p>Nenhuma.</p>}
-            {(detalhe.ativacoes || []).map((at) => (
-              <div key={at.id} className="aluno-ativacao-card">
-                <div>
-                  {at.plano_nome} — até{" "}
-                  {at.valido_ate
-                    ? new Date(at.valido_ate).toLocaleDateString("pt-BR")
-                    : "sem prazo"}
+            {(detalhe.ativacoes || []).map((at) => {
+              const origem = planos.find((p) => p.id === at.plano_id);
+              const opcoesUpgrade = origem
+                ? planos.filter(
+                    (p) =>
+                      p.ativo &&
+                      Number(p.preco_referencia) > Number(origem.preco_referencia)
+                  )
+                : [];
+              const destino =
+                planoUpgradeId && upgradeAtivacaoId === at.id
+                  ? planos.find((p) => p.id === planoUpgradeId)
+                  : undefined;
+              const preview =
+                origem && destino
+                  ? previewValorUpgrade(origem, destino, at.valido_ate)
+                  : null;
+              return (
+                <div key={at.id} className="aluno-ativacao-card">
+                  <div>
+                    {at.plano_nome} — até{" "}
+                    {at.valido_ate
+                      ? new Date(at.valido_ate).toLocaleDateString("pt-BR")
+                      : "sem prazo"}
+                  </div>
+                  <label>
+                    Dias a estender
+                    <input
+                      type="number"
+                      min={1}
+                      value={dias}
+                      onChange={(e) => setDias(Number(e.target.value))}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="btn btn--primary btn--small"
+                    onClick={() => estender(at.id)}
+                    disabled={salvando}
+                  >
+                    Estender
+                  </button>
+                  {at.valido_ate && opcoesUpgrade.length > 0 && (
+                    <>
+                      {upgradeAtivacaoId !== at.id ? (
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--small"
+                          onClick={() => {
+                            setUpgradeAtivacaoId(at.id);
+                            setPlanoUpgradeId("");
+                          }}
+                        >
+                          Upgrade
+                        </button>
+                      ) : (
+                        <>
+                          <label>
+                            Novo plano
+                            <select
+                              value={planoUpgradeId}
+                              onChange={(e) =>
+                                setPlanoUpgradeId(
+                                  e.target.value ? Number(e.target.value) : ""
+                                )
+                              }
+                            >
+                              <option value="">Selecione…</option>
+                              {opcoesUpgrade.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.nome}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          {preview && (
+                            <p className="page-lead">
+                              Estimativa: {preview.diasRestantes} dias · R${" "}
+                              {preview.valor.toFixed(2)}
+                            </p>
+                          )}
+                          <button
+                            type="button"
+                            className="btn btn--primary btn--small"
+                            onClick={() => fazerUpgrade(at.id)}
+                            disabled={salvando || !planoUpgradeId || !preview}
+                          >
+                            Confirmar upgrade
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--small"
+                            onClick={() => {
+                              setUpgradeAtivacaoId(null);
+                              setPlanoUpgradeId("");
+                            }}
+                          >
+                            Cancelar
+                          </button>
+                        </>
+                      )}
+                    </>
+                  )}
                 </div>
-                <label>
-                  Dias a estender
-                  <input
-                    type="number"
-                    min={1}
-                    value={dias}
-                    onChange={(e) => setDias(Number(e.target.value))}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="btn btn--primary btn--small"
-                  onClick={() => estender(at.id)}
-                  disabled={salvando}
-                >
-                  Estender
-                </button>
-              </div>
-            ))}
+              );
+            })}
 
             <h3>Histórico de ativações</h3>
             <ul>

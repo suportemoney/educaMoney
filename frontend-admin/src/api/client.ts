@@ -103,6 +103,7 @@ export type AlunoAdmin = {
   }[];
   ativacoes?: {
     id: number;
+    plano_id?: number;
     plano_nome: string;
     valido_ate: string | null;
     ativo: boolean;
@@ -111,6 +112,7 @@ export type AlunoAdmin = {
   }[];
   ativacoes_historico?: {
     id: number;
+    plano_id?: number;
     plano_nome: string;
     valido_ate: string | null;
     ativo: boolean;
@@ -182,6 +184,9 @@ export type AtivacaoAdmin = {
   renovado_em: string | null;
   usuario_nome: string;
   vigente: boolean;
+  valor_proporcional?: string;
+  dias_restantes?: number;
+  plano_origem_nome?: string;
 };
 
 export type TicketAdmin = {
@@ -223,6 +228,8 @@ export type TokenKey = {
   plano: number;
   plano_nome: string;
   status: string;
+  origem?: string;
+  valor_proporcional?: string | null;
   criado_por: number | null;
   criado_por_nome: string | null;
   criado_em: string;

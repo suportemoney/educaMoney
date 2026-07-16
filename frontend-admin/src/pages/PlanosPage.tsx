@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { apiRequest, type Plano } from "../api/client";
 import { Modal } from "../components/Modal";
 import { useAuth } from "../context/AuthContext";
@@ -12,6 +12,12 @@ function textoParaBeneficios(texto: string): string[] {
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
+}
+
+function formatBRL(valor: string | number): string {
+  const n = typeof valor === "number" ? valor : Number(String(valor).replace(",", "."));
+  if (Number.isNaN(n)) return String(valor);
+  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 const vazio = {
@@ -28,6 +34,8 @@ export function PlanosPage() {
   const { access } = useAuth();
   const [itens, setItens] = useState<Plano[]>([]);
   const [erro, setErro] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+  const [filtroAtivo, setFiltroAtivo] = useState("");
   const [modalAberto, setModalAberto] = useState(false);
   const [editando, setEditando] = useState<Plano | null>(null);
   const [form, setForm] = useState(vazio);
@@ -42,6 +50,21 @@ export function PlanosPage() {
   useEffect(() => {
     carregar().catch((e: Error) => setErro(e.message));
   }, [access]);
+
+  const filtrados = useMemo(() => {
+    const termo = q.trim().toLowerCase();
+    return itens.filter((p) => {
+      if (filtroAtivo === "1" && !p.ativo) return false;
+      if (filtroAtivo === "0" && p.ativo) return false;
+      if (!termo) return true;
+      return (
+        p.nome.toLowerCase().includes(termo) ||
+        (p.descricao || "").toLowerCase().includes(termo)
+      );
+    });
+  }, [itens, q, filtroAtivo]);
+
+  const ativos = filtrados.filter((p) => p.ativo).length;
 
   function abrirNovo() {
     setEditando(null);
@@ -122,7 +145,38 @@ export function PlanosPage() {
       <p className="page-lead">
         Título, preço e benefícios do card na landing (uma linha por item).
       </p>
+      <div className="stat-chips">
+        <span className="stat-chip">
+          Total <strong>{filtrados.length}</strong>
+        </span>
+        <span className="stat-chip">
+          Ativos <strong>{ativos}</strong>
+        </span>
+      </div>
       {erro && <p className="form-erro">{erro}</p>}
+      <form
+        className="filter-bar"
+        onSubmit={(e) => {
+          e.preventDefault();
+        }}
+      >
+        <label>
+          Busca
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Nome ou descrição…"
+          />
+        </label>
+        <label>
+          Status
+          <select value={filtroAtivo} onChange={(e) => setFiltroAtivo(e.target.value)}>
+            <option value="">Todos</option>
+            <option value="1">Ativos</option>
+            <option value="0">Inativos</option>
+          </select>
+        </label>
+      </form>
       <div className="table-wrap">
         <table className="data-table">
           <thead>
@@ -132,31 +186,48 @@ export function PlanosPage() {
               <th>Dias</th>
               <th>Benefícios</th>
               <th>Ordem</th>
-              <th>Ativo</th>
+              <th>Status</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {itens.map((p) => (
+            {filtrados.map((p) => (
               <tr key={p.id}>
                 <td>{p.nome}</td>
-                <td>{p.preco_referencia}</td>
+                <td>{formatBRL(p.preco_referencia)}</td>
                 <td>{p.duracao_dias ?? 365}</td>
                 <td>{(p.beneficios || []).length}</td>
                 <td>{p.ordem}</td>
-                <td>{p.ativo ? "Sim" : "Não"}</td>
+                <td>
+                  <span className={`badge ${p.ativo ? "badge--ok" : "badge--off"}`}>
+                    {p.ativo ? "Ativo" : "Inativo"}
+                  </span>
+                </td>
                 <td className="td-actions">
-                  <button type="button" className="btn btn--ghost btn--small" onClick={() => abrirEditar(p)}>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--small"
+                    onClick={() => abrirEditar(p)}
+                  >
                     Editar
                   </button>
                   {p.ativo && (
-                    <button type="button" className="btn btn--ghost btn--small" onClick={() => excluir(p)}>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--small"
+                      onClick={() => excluir(p)}
+                    >
                       Excluir
                     </button>
                   )}
                 </td>
               </tr>
             ))}
+            {filtrados.length === 0 && (
+              <tr>
+                <td colSpan={7}>Nenhum plano encontrado.</td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

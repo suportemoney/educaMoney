@@ -39,6 +39,23 @@ def aluno_elegivel_certificado(usuario: User, curso: Curso) -> tuple[bool, str]:
     if concluidas < total:
         return False, "Conclua todas as aulas do curso."
 
+    # Prova avaliadora do curso (cascata); fallback: quizzes de aula legados
+    prova = Quiz.objects.filter(
+        curso=curso, tipo=Quiz.Tipo.PROVA_CURSO, ativo=True
+    ).first()
+    if prova is None:
+        prova = getattr(curso, "prova_avaliadora", None)
+        if prova and not prova.ativo:
+            prova = None
+
+    if prova:
+        ok = TentativaQuiz.objects.filter(
+            usuario=usuario, quiz=prova, aprovado=True
+        ).exists()
+        if not ok:
+            return False, f"Aprove a prova do curso: {prova.titulo}."
+        return True, ""
+
     quizzes = Quiz.objects.filter(aula__in=aulas, ativo=True)
     for quiz in quizzes:
         ok = TentativaQuiz.objects.filter(

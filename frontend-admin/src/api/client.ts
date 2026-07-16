@@ -52,7 +52,8 @@ export type Curso = {
 
 export type MaterialAula = {
   id: number;
-  aula: number;
+  modulo?: number | null;
+  aula?: number | null;
   titulo: string;
   arquivo_url: string | null;
   ordem: number;
@@ -77,7 +78,10 @@ export type PerguntaAdmin = {
 
 export type QuizAdmin = {
   id: number;
-  aula: number;
+  tipo?: string;
+  aula?: number | null;
+  modulo?: number | null;
+  curso?: number | null;
   titulo: string;
   nota_minima: number;
   bloqueia_proxima: boolean;

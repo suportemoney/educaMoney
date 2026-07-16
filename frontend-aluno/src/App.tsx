@@ -12,6 +12,7 @@ import { FinancasPage } from "./pages/FinancasPage";
 import { LoginPage } from "./pages/LoginPage";
 import { MeusCursosPage } from "./pages/MeusCursosPage";
 import { PerfilPage } from "./pages/PerfilPage";
+import { ProvaCursoPage } from "./pages/ProvaCursoPage";
 import { SecretariaPage } from "./pages/SecretariaPage";
 
 export default function App() {
@@ -26,6 +27,7 @@ export default function App() {
               <Route path="catalogo" element={<CatalogoPage />} />
               <Route path="meus-cursos" element={<MeusCursosPage />} />
               <Route path="meus-cursos/:cursoId" element={<CursoDetalhePage />} />
+              <Route path="meus-cursos/:cursoId/prova" element={<ProvaCursoPage />} />
               <Route path="aulas/:aulaId" element={<AulaPlayerPage />} />
               <Route path="conjuntos" element={<ConjuntosPage />} />
               <Route path="financas" element={<FinancasPage />} />

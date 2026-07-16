@@ -462,13 +462,24 @@ class ProgressoAula(models.Model):
 
 
 class MaterialAula(models.Model):
-    """PDF, imagem ou zip de apoio vinculado à aula."""
+    """PDF/imagem/zip de apoio — vinculado ao módulo (cascata do painel)."""
 
+    modulo = models.ForeignKey(
+        "Modulo",
+        on_delete=models.CASCADE,
+        related_name="materiais",
+        verbose_name="módulo",
+        null=True,
+        blank=True,
+    )
+    # Legado: materiais antigos ligados à aula; preferir modulo
     aula = models.ForeignKey(
         Aula,
         on_delete=models.CASCADE,
         related_name="materiais",
         verbose_name="aula",
+        null=True,
+        blank=True,
     )
     titulo = models.CharField("título", max_length=160)
     arquivo = models.FileField("arquivo", upload_to="materiais/")
@@ -477,21 +488,49 @@ class MaterialAula(models.Model):
 
     class Meta:
         ordering = ["ordem", "id"]
-        verbose_name = "material de aula"
-        verbose_name_plural = "materiais de aula"
+        verbose_name = "material"
+        verbose_name_plural = "materiais"
 
     def __str__(self):
         return self.titulo
 
 
 class Quiz(models.Model):
-    """Avaliação objetiva ligada a uma aula (1:1)."""
+    """Atividade de módulo, prova do curso ou quiz legado de aula."""
+
+    class Tipo(models.TextChoices):
+        ATIVIDADE = "atividade", "Atividade do módulo"
+        PROVA_CURSO = "prova_curso", "Prova avaliadora do curso"
+        QUIZ_AULA = "quiz_aula", "Quiz de aula (legado)"
 
     aula = models.OneToOneField(
         Aula,
         on_delete=models.CASCADE,
         related_name="quiz",
         verbose_name="aula",
+        null=True,
+        blank=True,
+    )
+    modulo = models.ForeignKey(
+        "Modulo",
+        on_delete=models.CASCADE,
+        related_name="atividades",
+        verbose_name="módulo",
+        null=True,
+        blank=True,
+    )
+    curso = models.OneToOneField(
+        Curso,
+        on_delete=models.CASCADE,
+        related_name="prova_avaliadora",
+        verbose_name="curso (prova)",
+        null=True,
+        blank=True,
+    )
+    tipo = models.CharField(
+        max_length=20,
+        choices=Tipo.choices,
+        default=Tipo.QUIZ_AULA,
     )
     titulo = models.CharField("título", max_length=160)
     nota_minima = models.PositiveIntegerField(
@@ -502,7 +541,7 @@ class Quiz(models.Model):
     bloqueia_proxima = models.BooleanField(
         "bloqueia próxima aula",
         default=False,
-        help_text="Se ativo, exige aprovação para avançar.",
+        help_text="Se ativo, exige aprovação para avançar (quiz de aula).",
     )
     ativo = models.BooleanField("ativo", default=True)
 
@@ -511,7 +550,7 @@ class Quiz(models.Model):
         verbose_name_plural = "quizzes"
 
     def __str__(self):
-        return f"{self.aula}: {self.titulo}"
+        return self.titulo
 
 
 class Pergunta(models.Model):

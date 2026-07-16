@@ -22,7 +22,9 @@ from .models import (
     Ativacao,
     Aula,
     Certificado,
+    Curso,
     MaterialAula,
+    Modulo,
     Pergunta,
     ProgressoAula,
     Quiz,
@@ -77,7 +79,9 @@ class AdminMaterialListCreateView(APIView):
                 {"arquivo": ["Envie um arquivo."]},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        mat = MaterialAula.objects.create(aula=aula, **ser.validated_data)
+        mat = MaterialAula.objects.create(
+            aula=aula, modulo=aula.modulo, **ser.validated_data
+        )
         return Response(
             MaterialAulaSerializer(mat, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
@@ -101,6 +105,124 @@ class AdminMaterialDetailView(APIView):
         mat = get_object_or_404(MaterialAula, pk=pk)
         soft_delete_ativo(mat)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AdminModuloMateriaisView(APIView):
+    """Materiais do módulo (cascata)."""
+
+    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get(self, request, modulo_id):
+        modulo = get_object_or_404(Modulo, pk=modulo_id)
+        qs = MaterialAula.objects.filter(modulo=modulo).order_by("ordem", "id")
+        if request.query_params.get("incluir_inativos") != "1":
+            qs = qs.filter(ativo=True)
+        return Response(
+            MaterialAulaSerializer(qs, many=True, context={"request": request}).data
+        )
+
+    def post(self, request, modulo_id):
+        modulo = get_object_or_404(Modulo, pk=modulo_id)
+        ser = MaterialAulaSerializer(
+            data=request.data, context={"request": request}
+        )
+        ser.is_valid(raise_exception=True)
+        if not ser.validated_data.get("arquivo"):
+            return Response(
+                {"arquivo": ["Envie um arquivo."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        mat = MaterialAula.objects.create(
+            modulo=modulo, aula=None, **ser.validated_data
+        )
+        return Response(
+            MaterialAulaSerializer(mat, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class AdminModuloAtividadesView(APIView):
+    """Atividades (quizzes) do módulo."""
+
+    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+
+    def get(self, request, modulo_id):
+        modulo = get_object_or_404(Modulo, pk=modulo_id)
+        qs = (
+            Quiz.objects.filter(modulo=modulo, tipo=Quiz.Tipo.ATIVIDADE)
+            .prefetch_related("perguntas__alternativas")
+            .order_by("id")
+        )
+        if request.query_params.get("incluir_inativos") != "1":
+            qs = qs.filter(ativo=True)
+        return Response(QuizAdminSerializer(qs, many=True).data)
+
+    def post(self, request, modulo_id):
+        modulo = get_object_or_404(Modulo, pk=modulo_id)
+        ser = QuizAdminSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        quiz = Quiz.objects.create(
+            modulo=modulo,
+            tipo=Quiz.Tipo.ATIVIDADE,
+            aula=None,
+            curso=None,
+            **ser.validated_data,
+        )
+        return Response(
+            QuizAdminSerializer(quiz).data, status=status.HTTP_201_CREATED
+        )
+
+
+class AdminCursoProvaView(APIView):
+    """Prova avaliadora única do curso (certificado)."""
+
+    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+
+    def get(self, request, curso_id):
+        curso = get_object_or_404(Curso, pk=curso_id)
+        quiz = (
+            Quiz.objects.filter(curso=curso, tipo=Quiz.Tipo.PROVA_CURSO)
+            .prefetch_related("perguntas__alternativas")
+            .first()
+        )
+        if not quiz or (not quiz.ativo and request.query_params.get("incluir_inativos") != "1"):
+            return Response(None)
+        return Response(QuizAdminSerializer(quiz).data)
+
+    def post(self, request, curso_id):
+        curso = get_object_or_404(Curso, pk=curso_id)
+        existente = Quiz.objects.filter(curso=curso).first()
+        ser = QuizAdminSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        if existente:
+            if existente.ativo and existente.tipo == Quiz.Tipo.PROVA_CURSO:
+                return Response(
+                    {"detail": "Curso já tem prova. Use PATCH."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            for campo, valor in ser.validated_data.items():
+                setattr(existente, campo, valor)
+            existente.tipo = Quiz.Tipo.PROVA_CURSO
+            existente.curso = curso
+            existente.modulo = None
+            existente.aula = None
+            existente.ativo = True
+            existente.save()
+            quiz = Quiz.objects.prefetch_related("perguntas__alternativas").get(
+                pk=existente.pk
+            )
+            return Response(QuizAdminSerializer(quiz).data)
+        quiz = Quiz.objects.create(
+            curso=curso,
+            tipo=Quiz.Tipo.PROVA_CURSO,
+            aula=None,
+            modulo=None,
+            **ser.validated_data,
+        )
+        return Response(
+            QuizAdminSerializer(quiz).data, status=status.HTTP_201_CREATED
+        )
 
 
 def _foto_url(request, perfil):
@@ -375,7 +497,9 @@ class AdminQuizByAulaView(APIView):
                 pk=existente.pk
             )
             return Response(QuizAdminSerializer(quiz).data, status=status.HTTP_200_OK)
-        quiz = Quiz.objects.create(aula=aula, **ser.validated_data)
+        quiz = Quiz.objects.create(
+            aula=aula, tipo=Quiz.Tipo.QUIZ_AULA, **ser.validated_data
+        )
         return Response(
             QuizAdminSerializer(quiz).data, status=status.HTTP_201_CREATED
         )

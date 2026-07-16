@@ -25,13 +25,21 @@ const aulaVazia = {
 };
 const matVazio = { titulo: "", ordem: 0, ativo: true, arquivo: null as File | null };
 const quizVazio = {
-  titulo: "Quiz da aula",
+  titulo: "Atividade",
+  nota_minima: 70,
+  bloqueia_proxima: false,
+  ativo: true,
+};
+const provaVazia = {
+  titulo: "Prova avaliadora",
   nota_minima: 70,
   bloqueia_proxima: false,
   ativo: true,
 };
 const perguntaVazia = { enunciado: "", ordem: 0 };
 const altVazia = { texto: "", correta: false, ordem: 0 };
+
+type QuizEditorAlvo = "prova" | "atividade";
 
 export function CursoConteudoPage() {
   const { cursoId } = useParams<{ cursoId: string }>();
@@ -42,11 +50,11 @@ export function CursoConteudoPage() {
   const [modulos, setModulos] = useState<Modulo[]>([]);
   const [moduloSel, setModuloSel] = useState<number | null>(null);
   const [aulas, setAulas] = useState<AulaAdmin[]>([]);
-  const [aulaSel, setAulaSel] = useState<number | null>(null);
   const [materiais, setMateriais] = useState<MaterialAula[]>([]);
-  const [quiz, setQuiz] = useState<QuizAdmin | null>(null);
+  const [atividades, setAtividades] = useState<QuizAdmin[]>([]);
+  const [atividadeSel, setAtividadeSel] = useState<number | null>(null);
+  const [prova, setProva] = useState<QuizAdmin | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  const [urlPronta, setUrlPronta] = useState(false);
 
   const [modalModulo, setModalModulo] = useState(false);
   const [editModulo, setEditModulo] = useState<Modulo | null>(null);
@@ -61,11 +69,14 @@ export function CursoConteudoPage() {
   const [formMat, setFormMat] = useState(matVazio);
 
   const [modalQuiz, setModalQuiz] = useState(false);
+  const [quizEditorAlvo, setQuizEditorAlvo] = useState<QuizEditorAlvo>("atividade");
+  const [editQuizId, setEditQuizId] = useState<number | null>(null);
   const [formQuiz, setFormQuiz] = useState(quizVazio);
 
   const [modalPerg, setModalPerg] = useState(false);
   const [editPerg, setEditPerg] = useState<PerguntaAdmin | null>(null);
   const [formPerg, setFormPerg] = useState(perguntaVazia);
+  const [pergQuizId, setPergQuizId] = useState<number | null>(null);
 
   const [modalAlt, setModalAlt] = useState(false);
   const [pergAltId, setPergAltId] = useState<number | null>(null);
@@ -78,93 +89,90 @@ export function CursoConteudoPage() {
     () => modulos.find((m) => m.id === moduloSel) || null,
     [modulos, moduloSel]
   );
-  const aulaAtual = useMemo(
-    () => aulas.find((a) => a.id === aulaSel) || null,
-    [aulas, aulaSel]
+  const atividadeAtual = useMemo(
+    () => atividades.find((a) => a.id === atividadeSel) || null,
+    [atividades, atividadeSel]
   );
 
   const quizAvisos = useMemo(() => {
-    if (!quiz) return [] as string[];
-    const avisos: string[] = [];
-    const pergs = quiz.perguntas || [];
-    if (!pergs.length) avisos.push("Quiz sem perguntas.");
-    else if (pergs.some((p) => !(p.alternativas || []).some((a) => a.correta))) {
-      avisos.push("Há pergunta sem alternativa correta (gabarito).");
-    }
-    return avisos;
-  }, [quiz]);
+    const avisosDe = (q: QuizAdmin | null) => {
+      if (!q) return [] as string[];
+      const avisos: string[] = [];
+      const pergs = q.perguntas || [];
+      if (!pergs.length) avisos.push("Sem perguntas.");
+      else if (pergs.some((p) => !(p.alternativas || []).some((a) => a.correta))) {
+        avisos.push("Há pergunta sem alternativa correta (gabarito).");
+      }
+      return avisos;
+    };
+    return { prova: avisosDe(prova), atividade: avisosDe(atividadeAtual) };
+  }, [prova, atividadeAtual]);
 
-  function syncUrl(mid: number | null, aid: number | null) {
+  function syncUrl(mid: number | null) {
     if (!cursoId) return;
     const params = new URLSearchParams();
     if (mid != null) params.set("modulo", String(mid));
-    if (aid != null) params.set("aula", String(aid));
     const qs = params.toString();
     navigate(`/cursos/${cursoId}/conteudo${qs ? `?${qs}` : ""}`, { replace: true });
   }
 
   function selecionarModulo(id: number) {
-    setModuloSel(id);
-    setAulaSel(null);
-    syncUrl(id, null);
-  }
-
-  function selecionarAula(id: number) {
-    setAulaSel(id);
-    syncUrl(moduloSel, id);
+    const next = moduloSel === id ? null : id;
+    setModuloSel(next);
+    setAtividadeSel(null);
+    syncUrl(next);
   }
 
   async function carregarCursoEModulos() {
     if (!access || !cursoId) return;
     const id = Number(cursoId);
-    const [c, m] = await Promise.all([
+    const [c, m, p] = await Promise.all([
       apiRequest<Curso>(`/admin/cursos/${id}/`, { token: access }),
       apiRequest<Modulo[]>(`/admin/cursos/${id}/modulos/`, { token: access }),
+      apiRequest<QuizAdmin | null>(`/admin/cursos/${id}/prova/`, { token: access }),
     ]);
     setCurso(c);
     setModulos(m);
+    setProva(p);
 
     const midQ = Number(searchParams.get("modulo") || "") || null;
-    const aidQ = Number(searchParams.get("aula") || "") || null;
-    let mid = midQ && m.some((x) => x.id === midQ) ? midQ : null;
-    if (mid == null && m.length) mid = m[0].id;
+    const mid = midQ && m.some((x) => x.id === midQ) ? midQ : null;
     setModuloSel(mid);
-    // aula será resolvida após carregar aulas
-    if (mid != null && aidQ) {
-      setAulaSel(aidQ);
-    } else if (mid == null) {
-      setAulaSel(null);
-    }
-    setUrlPronta(true);
   }
 
-  async function carregarAulas(mid: number) {
+  async function carregarModuloExtra(mid: number) {
     if (!access) return;
-    const list = await apiRequest<AulaAdmin[]>(`/admin/modulos/${mid}/aulas/`, {
+    const [listAulas, mats, atvs] = await Promise.all([
+      apiRequest<AulaAdmin[]>(`/admin/modulos/${mid}/aulas/`, { token: access }),
+      apiRequest<MaterialAula[]>(`/admin/modulos/${mid}/materiais/`, { token: access }),
+      apiRequest<QuizAdmin[]>(`/admin/modulos/${mid}/atividades/`, { token: access }),
+    ]);
+    setAulas(listAulas);
+    setMateriais(mats);
+    setAtividades(atvs);
+    setAtividadeSel((prev) =>
+      prev != null && atvs.some((x) => x.id === prev) ? prev : atvs[0]?.id ?? null
+    );
+  }
+
+  async function recarregarProva() {
+    if (!access || !cursoId) return;
+    const p = await apiRequest<QuizAdmin | null>(`/admin/cursos/${cursoId}/prova/`, {
       token: access,
     });
-    setAulas(list);
-    const aidQ = Number(searchParams.get("aula") || "") || null;
-    let aid =
-      aulaSel != null && list.some((x) => x.id === aulaSel)
-        ? aulaSel
-        : aidQ && list.some((x) => x.id === aidQ)
-          ? aidQ
-          : list.length
-            ? list[0].id
-            : null;
-    setAulaSel(aid);
-    if (urlPronta) syncUrl(mid, aid);
+    setProva(p);
   }
 
-  async function carregarAulaExtra(aid: number) {
-    if (!access) return;
-    const [mats, q] = await Promise.all([
-      apiRequest<MaterialAula[]>(`/admin/aulas/${aid}/materiais/`, { token: access }),
-      apiRequest<QuizAdmin | null>(`/admin/aulas/${aid}/quiz/`, { token: access }),
-    ]);
-    setMateriais(mats);
-    setQuiz(q);
+  async function recarregarAtividades() {
+    if (!access || moduloSel == null) return;
+    const atvs = await apiRequest<QuizAdmin[]>(
+      `/admin/modulos/${moduloSel}/atividades/`,
+      { token: access }
+    );
+    setAtividades(atvs);
+    setAtividadeSel((prev) =>
+      prev != null && atvs.some((x) => x.id === prev) ? prev : atvs[0]?.id ?? null
+    );
   }
 
   useEffect(() => {
@@ -174,20 +182,13 @@ export function CursoConteudoPage() {
   useEffect(() => {
     if (moduloSel == null) {
       setAulas([]);
-      setAulaSel(null);
-      return;
-    }
-    carregarAulas(moduloSel).catch((e: Error) => setErro(e.message));
-  }, [access, moduloSel]);
-
-  useEffect(() => {
-    if (aulaSel == null) {
       setMateriais([]);
-      setQuiz(null);
+      setAtividades([]);
+      setAtividadeSel(null);
       return;
     }
-    carregarAulaExtra(aulaSel).catch((e: Error) => setErro(e.message));
-  }, [access, aulaSel]);
+    carregarModuloExtra(moduloSel).catch((e: Error) => setErro(e.message));
+  }, [access, moduloSel]);
 
   function abrirNovoModulo() {
     setEditModulo(null);
@@ -234,8 +235,7 @@ export function CursoConteudoPage() {
     await apiRequest(`/admin/modulos/${m.id}/`, { method: "DELETE", token: access });
     if (moduloSel === m.id) {
       setModuloSel(null);
-      setAulaSel(null);
-      syncUrl(null, null);
+      syncUrl(null);
     }
     await carregarCursoEModulos();
   }
@@ -288,7 +288,7 @@ export function CursoConteudoPage() {
         });
       }
       setModalAula(false);
-      await carregarAulas(moduloSel);
+      await carregarModuloExtra(moduloSel);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Falha ao salvar aula");
     } finally {
@@ -299,16 +299,12 @@ export function CursoConteudoPage() {
   async function excluirAula(a: AulaAdmin) {
     if (!access || !confirm(`Excluir (inativar) a aula "${a.titulo}"?`)) return;
     await apiRequest(`/admin/aulas/${a.id}/`, { method: "DELETE", token: access });
-    if (aulaSel === a.id) {
-      setAulaSel(null);
-      syncUrl(moduloSel, null);
-    }
-    if (moduloSel != null) await carregarAulas(moduloSel);
+    if (moduloSel != null) await carregarModuloExtra(moduloSel);
   }
 
   async function salvarMaterial(e: FormEvent) {
     e.preventDefault();
-    if (!access || aulaSel == null) return;
+    if (!access || moduloSel == null) return;
     setSalvando(true);
     setErro(null);
     const fd = new FormData();
@@ -325,14 +321,14 @@ export function CursoConteudoPage() {
         });
       } else {
         if (!formMat.arquivo) throw new Error("Envie um arquivo.");
-        await apiFormData(`/admin/aulas/${aulaSel}/materiais/`, {
+        await apiFormData(`/admin/modulos/${moduloSel}/materiais/`, {
           method: "POST",
           token: access,
           formData: fd,
         });
       }
       setModalMat(false);
-      await carregarAulaExtra(aulaSel);
+      await carregarModuloExtra(moduloSel);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Falha ao salvar material");
     } finally {
@@ -343,46 +339,84 @@ export function CursoConteudoPage() {
   async function excluirMaterial(m: MaterialAula) {
     if (!access || !confirm(`Excluir material "${m.titulo}"?`)) return;
     await apiRequest(`/admin/materiais/${m.id}/`, { method: "DELETE", token: access });
-    if (aulaSel != null) await carregarAulaExtra(aulaSel);
+    if (moduloSel != null) await carregarModuloExtra(moduloSel);
+  }
+
+  function abrirModalQuiz(alvo: QuizEditorAlvo, existente: QuizAdmin | null) {
+    setQuizEditorAlvo(alvo);
+    setEditQuizId(existente?.id ?? null);
+    if (existente) {
+      setFormQuiz({
+        titulo: existente.titulo,
+        nota_minima: existente.nota_minima,
+        bloqueia_proxima: existente.bloqueia_proxima,
+        ativo: existente.ativo,
+      });
+    } else {
+      setFormQuiz(alvo === "prova" ? provaVazia : quizVazio);
+    }
+    setModalQuiz(true);
   }
 
   async function salvarQuiz(e: FormEvent) {
     e.preventDefault();
-    if (!access || aulaSel == null) return;
+    if (!access || !cursoId) return;
     setSalvando(true);
     setErro(null);
     try {
-      if (quiz) {
-        await apiRequest(`/admin/quizzes/${quiz.id}/`, {
-          method: "PATCH",
-          token: access,
-          body: formQuiz,
-        });
+      if (quizEditorAlvo === "prova") {
+        if (prova) {
+          await apiRequest(`/admin/quizzes/${prova.id}/`, {
+            method: "PATCH",
+            token: access,
+            body: formQuiz,
+          });
+        } else {
+          await apiRequest(`/admin/cursos/${cursoId}/prova/`, {
+            method: "POST",
+            token: access,
+            body: formQuiz,
+          });
+        }
+        setModalQuiz(false);
+        setEditQuizId(null);
+        await recarregarProva();
       } else {
-        await apiRequest(`/admin/aulas/${aulaSel}/quiz/`, {
-          method: "POST",
-          token: access,
-          body: formQuiz,
-        });
+        if (moduloSel == null) return;
+        if (editQuizId != null) {
+          await apiRequest(`/admin/quizzes/${editQuizId}/`, {
+            method: "PATCH",
+            token: access,
+            body: formQuiz,
+          });
+        } else {
+          await apiRequest(`/admin/modulos/${moduloSel}/atividades/`, {
+            method: "POST",
+            token: access,
+            body: formQuiz,
+          });
+        }
+        setModalQuiz(false);
+        setEditQuizId(null);
+        await recarregarAtividades();
       }
-      setModalQuiz(false);
-      await carregarAulaExtra(aulaSel);
     } catch (err) {
-      setErro(err instanceof Error ? err.message : "Falha ao salvar quiz");
+      setErro(err instanceof Error ? err.message : "Falha ao salvar");
     } finally {
       setSalvando(false);
     }
   }
 
-  async function excluirQuiz() {
-    if (!access || !quiz || !confirm("Inativar este quiz?")) return;
-    await apiRequest(`/admin/quizzes/${quiz.id}/`, { method: "DELETE", token: access });
-    if (aulaSel != null) await carregarAulaExtra(aulaSel);
+  async function excluirQuiz(q: QuizAdmin, alvo: QuizEditorAlvo) {
+    if (!access || !confirm(`Inativar "${q.titulo}"?`)) return;
+    await apiRequest(`/admin/quizzes/${q.id}/`, { method: "DELETE", token: access });
+    if (alvo === "prova") await recarregarProva();
+    else await recarregarAtividades();
   }
 
   async function salvarPergunta(e: FormEvent) {
     e.preventDefault();
-    if (!access || !quiz) return;
+    if (!access || pergQuizId == null) return;
     setSalvando(true);
     try {
       if (editPerg) {
@@ -392,14 +426,15 @@ export function CursoConteudoPage() {
           body: formPerg,
         });
       } else {
-        await apiRequest(`/admin/quizzes/${quiz.id}/perguntas/`, {
+        await apiRequest(`/admin/quizzes/${pergQuizId}/perguntas/`, {
           method: "POST",
           token: access,
           body: formPerg,
         });
       }
       setModalPerg(false);
-      if (aulaSel != null) await carregarAulaExtra(aulaSel);
+      if (prova?.id === pergQuizId) await recarregarProva();
+      else await recarregarAtividades();
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Falha ao salvar pergunta");
     } finally {
@@ -407,15 +442,16 @@ export function CursoConteudoPage() {
     }
   }
 
-  async function excluirPergunta(p: PerguntaAdmin) {
+  async function excluirPergunta(p: PerguntaAdmin, quizId: number) {
     if (!access || !confirm("Excluir pergunta?")) return;
     await apiRequest(`/admin/perguntas/${p.id}/`, { method: "DELETE", token: access });
-    if (aulaSel != null) await carregarAulaExtra(aulaSel);
+    if (prova?.id === quizId) await recarregarProva();
+    else await recarregarAtividades();
   }
 
   async function salvarAlt(e: FormEvent) {
     e.preventDefault();
-    if (!access || pergAltId == null) return;
+    if (!access || pergAltId == null || pergQuizId == null) return;
     setSalvando(true);
     try {
       if (editAlt) {
@@ -433,7 +469,8 @@ export function CursoConteudoPage() {
       }
       setModalAlt(false);
       setEditAlt(null);
-      if (aulaSel != null) await carregarAulaExtra(aulaSel);
+      if (prova?.id === pergQuizId) await recarregarProva();
+      else await recarregarAtividades();
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Falha ao salvar alternativa");
     } finally {
@@ -441,10 +478,129 @@ export function CursoConteudoPage() {
     }
   }
 
-  async function excluirAlt(id: number) {
+  async function excluirAlt(id: number, quizId: number) {
     if (!access || !confirm("Excluir alternativa?")) return;
     await apiRequest(`/admin/alternativas/${id}/`, { method: "DELETE", token: access });
-    if (aulaSel != null) await carregarAulaExtra(aulaSel);
+    if (prova?.id === quizId) await recarregarProva();
+    else await recarregarAtividades();
+  }
+
+  function renderQuizPerguntas(q: QuizAdmin) {
+    return (
+      <>
+        {(q === prova ? quizAvisos.prova : quizAvisos.atividade).map((a) => (
+          <p key={a} className="form-erro">
+            {a}
+          </p>
+        ))}
+        <div className="page-head">
+          <h4>Perguntas</h4>
+          <button
+            type="button"
+            className="btn btn--primary btn--small"
+            onClick={() => {
+              setPergQuizId(q.id);
+              setEditPerg(null);
+              setFormPerg(perguntaVazia);
+              setModalPerg(true);
+            }}
+          >
+            Nova pergunta
+          </button>
+        </div>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Enunciado</th>
+                <th>Alternativas</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {(q.perguntas || []).map((p) => (
+                <tr key={p.id}>
+                  <td>{p.enunciado}</td>
+                  <td>
+                    <ul className="alt-list">
+                      {(p.alternativas || []).map((a) => (
+                        <li key={a.id}>
+                          {a.texto}{" "}
+                          {a.correta && <span className="badge badge--ok">correta</span>}{" "}
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--small"
+                            onClick={() => {
+                              setPergQuizId(q.id);
+                              setPergAltId(p.id);
+                              setEditAlt(a);
+                              setFormAlt({
+                                texto: a.texto,
+                                correta: a.correta,
+                                ordem: a.ordem,
+                              });
+                              setModalAlt(true);
+                            }}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--small"
+                            onClick={() => excluirAlt(a.id, q.id)}
+                          >
+                            ×
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--small"
+                      onClick={() => {
+                        setPergQuizId(q.id);
+                        setPergAltId(p.id);
+                        setEditAlt(null);
+                        setFormAlt(altVazia);
+                        setModalAlt(true);
+                      }}
+                    >
+                      + Alternativa
+                    </button>
+                  </td>
+                  <td className="td-actions">
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--small"
+                      onClick={() => {
+                        setPergQuizId(q.id);
+                        setEditPerg(p);
+                        setFormPerg({ enunciado: p.enunciado, ordem: p.ordem });
+                        setModalPerg(true);
+                      }}
+                    >
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--small"
+                      onClick={() => excluirPergunta(p, q.id)}
+                    >
+                      Excluir
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {(q.perguntas || []).length === 0 && (
+                <tr>
+                  <td colSpan={3}>Nenhuma pergunta.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </>
+    );
   }
 
   return (
@@ -459,12 +615,6 @@ export function CursoConteudoPage() {
             <span>{moduloAtual.titulo}</span>
           </>
         )}
-        {aulaAtual && (
-          <>
-            <span className="breadcrumb__sep">›</span>
-            <span>{aulaAtual.titulo}</span>
-          </>
-        )}
       </nav>
 
       <div className="page-head">
@@ -476,8 +626,8 @@ export function CursoConteudoPage() {
         </button>
       </div>
       <p className="page-lead">
-        Cascata: Curso → Módulo → Aula → Materiais → Prova. Clique na linha para descer um
-        nível. Vídeo até 500&nbsp;MB; materiais até 50&nbsp;MB.
+        Curso → módulos. Ao abrir um módulo: aulas, materiais e atividades. Fora do módulo: prova
+        avaliadora do curso (certificado).
       </p>
       {erro && <p className="form-erro">{erro}</p>}
 
@@ -487,7 +637,9 @@ export function CursoConteudoPage() {
             <span className="conteudo-cascade__n">1</span>
             <div>
               <h2>Módulos</h2>
-              <p className="conteudo-cascade__hint">do curso {curso?.titulo || "…"}</p>
+              <p className="conteudo-cascade__hint">
+                Clique para abrir aulas, materiais e atividades
+              </p>
             </div>
           </header>
           <div className="table-wrap">
@@ -556,94 +708,70 @@ export function CursoConteudoPage() {
             <header className="conteudo-cascade__head">
               <span className="conteudo-cascade__n">2</span>
               <div>
-                <h2>Aulas</h2>
-                <p className="conteudo-cascade__hint">
-                  do módulo <strong>{moduloAtual?.titulo}</strong>
-                </p>
-              </div>
-              <button
-                type="button"
-                className="btn btn--primary btn--small"
-                onClick={abrirNovaAula}
-              >
-                Nova aula
-              </button>
-            </header>
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Título</th>
-                    <th>Vídeo</th>
-                    <th>Status</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {aulas.map((a) => (
-                    <tr
-                      key={a.id}
-                      className={aulaSel === a.id ? "row-selected" : undefined}
-                      onClick={() => selecionarAula(a.id)}
-                    >
-                      <td>{a.titulo}</td>
-                      <td>{a.video_url ? "Sim" : "—"}</td>
-                      <td>
-                        <span className={`badge ${a.ativo ? "badge--ok" : "badge--off"}`}>
-                          {a.ativo ? "Ativo" : "Off"}
-                        </span>
-                      </td>
-                      <td className="td-actions" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--small"
-                          onClick={() => abrirEditarAula(a)}
-                        >
-                          Editar
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--small"
-                          onClick={() => excluirAula(a)}
-                        >
-                          Excluir
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {aulas.length === 0 && (
-                    <tr>
-                      <td colSpan={4}>
-                        Nenhuma aula.{" "}
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--small"
-                          onClick={abrirNovaAula}
-                        >
-                          Nova aula
-                        </button>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </li>
-        )}
-
-        {aulaSel != null && (
-          <li className="conteudo-cascade__step conteudo-cascade__step--nested conteudo-cascade__step--deep">
-            <header className="conteudo-cascade__head">
-              <span className="conteudo-cascade__n">3</span>
-              <div>
-                <h2>Aula: {aulaAtual?.titulo}</h2>
-                <p className="conteudo-cascade__hint">
-                  Materiais e prova desta aula
-                </p>
+                <h2>Módulo: {moduloAtual?.titulo}</h2>
+                <p className="conteudo-cascade__hint">Aulas · Materiais · Atividades</p>
               </div>
             </header>
 
-            <div className="conteudo-cascade__aula-body">
+            <div className="conteudo-modulo-grid">
+              <section className="conteudo-cascade__child">
+                <div className="page-head">
+                  <h3>Aulas</h3>
+                  <button
+                    type="button"
+                    className="btn btn--primary btn--small"
+                    onClick={abrirNovaAula}
+                  >
+                    Nova aula
+                  </button>
+                </div>
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Título</th>
+                        <th>Vídeo</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {aulas.map((a) => (
+                        <tr key={a.id}>
+                          <td>
+                            {a.titulo}{" "}
+                            <span className={`badge ${a.ativo ? "badge--ok" : "badge--off"}`}>
+                              {a.ativo ? "Ativo" : "Off"}
+                            </span>
+                          </td>
+                          <td>{a.video_url ? "Sim" : "—"}</td>
+                          <td className="td-actions">
+                            <button
+                              type="button"
+                              className="btn btn--ghost btn--small"
+                              onClick={() => abrirEditarAula(a)}
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn--ghost btn--small"
+                              onClick={() => excluirAula(a)}
+                            >
+                              Excluir
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {aulas.length === 0 && (
+                        <tr>
+                          <td colSpan={3}>Nenhuma aula.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
               <section className="conteudo-cascade__child">
                 <div className="page-head">
                   <h3>Materiais</h3>
@@ -665,7 +793,6 @@ export function CursoConteudoPage() {
                       <tr>
                         <th>Título</th>
                         <th>Arquivo</th>
-                        <th>Status</th>
                         <th></th>
                       </tr>
                     </thead>
@@ -681,11 +808,6 @@ export function CursoConteudoPage() {
                             ) : (
                               "—"
                             )}
-                          </td>
-                          <td>
-                            <span className={`badge ${m.ativo ? "badge--ok" : "badge--off"}`}>
-                              {m.ativo ? "Ativo" : "Off"}
-                            </span>
                           </td>
                           <td className="td-actions">
                             <button
@@ -716,7 +838,7 @@ export function CursoConteudoPage() {
                       ))}
                       {materiais.length === 0 && (
                         <tr>
-                          <td colSpan={4}>Nenhum material nesta aula.</td>
+                          <td colSpan={3}>Nenhum material.</td>
                         </tr>
                       )}
                     </tbody>
@@ -726,169 +848,115 @@ export function CursoConteudoPage() {
 
               <section className="conteudo-cascade__child">
                 <div className="page-head">
-                  <h3>Prova e atividades</h3>
-                  <div style={{ display: "flex", gap: "0.5rem" }}>
-                    <button
-                      type="button"
-                      className="btn btn--primary btn--small"
-                      onClick={() => {
-                        setFormQuiz(
-                          quiz
-                            ? {
-                                titulo: quiz.titulo,
-                                nota_minima: quiz.nota_minima,
-                                bloqueia_proxima: quiz.bloqueia_proxima,
-                                ativo: quiz.ativo,
-                              }
-                            : quizVazio
-                        );
-                        setModalQuiz(true);
-                      }}
-                    >
-                      {quiz ? "Editar prova" : "Nova prova"}
-                    </button>
-                    {quiz && (
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--small"
-                        onClick={excluirQuiz}
-                      >
-                        Excluir
-                      </button>
-                    )}
-                  </div>
+                  <h3>Atividades</h3>
+                  <button
+                    type="button"
+                    className="btn btn--primary btn--small"
+                    onClick={() => abrirModalQuiz("atividade", null)}
+                  >
+                    Nova atividade
+                  </button>
                 </div>
-                {!quiz && <p className="page-lead">Nenhuma prova ativa nesta aula.</p>}
-                {quiz && (
-                  <>
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Título</th>
+                        <th>Nota mín.</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {atividades.map((a) => (
+                        <tr
+                          key={a.id}
+                          className={atividadeSel === a.id ? "row-selected" : undefined}
+                          onClick={() => setAtividadeSel(a.id)}
+                        >
+                          <td>{a.titulo}</td>
+                          <td>{a.nota_minima}%</td>
+                          <td className="td-actions" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              className="btn btn--ghost btn--small"
+                              onClick={() => abrirModalQuiz("atividade", a)}
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn--ghost btn--small"
+                              onClick={() => excluirQuiz(a, "atividade")}
+                            >
+                              Excluir
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {atividades.length === 0 && (
+                        <tr>
+                          <td colSpan={3}>Nenhuma atividade.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                {atividadeAtual && (
+                  <div className="conteudo-cascade__quiz-body">
                     <p className="page-lead">
-                      {quiz.titulo} — nota mín. {quiz.nota_minima}%
-                      {quiz.bloqueia_proxima ? " · bloqueia próxima" : ""}
+                      {atividadeAtual.titulo} — nota mín. {atividadeAtual.nota_minima}%
                     </p>
-                    {quizAvisos.map((a) => (
-                      <p key={a} className="form-erro">
-                        {a}
-                      </p>
-                    ))}
-                    <div className="page-head">
-                      <h3>Perguntas</h3>
-                      <button
-                        type="button"
-                        className="btn btn--primary btn--small"
-                        onClick={() => {
-                          setEditPerg(null);
-                          setFormPerg(perguntaVazia);
-                          setModalPerg(true);
-                        }}
-                      >
-                        Nova pergunta
-                      </button>
-                    </div>
-                    <div className="table-wrap">
-                      <table className="data-table">
-                        <thead>
-                          <tr>
-                            <th>Enunciado</th>
-                            <th>Alternativas</th>
-                            <th></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(quiz.perguntas || []).map((p) => (
-                            <tr key={p.id}>
-                              <td>{p.enunciado}</td>
-                              <td>
-                                <ul className="alt-list">
-                                  {(p.alternativas || []).map((a) => (
-                                    <li key={a.id}>
-                                      {a.texto}{" "}
-                                      {a.correta && (
-                                        <span className="badge badge--ok">correta</span>
-                                      )}{" "}
-                                      <button
-                                        type="button"
-                                        className="btn btn--ghost btn--small"
-                                        onClick={() => {
-                                          setPergAltId(p.id);
-                                          setEditAlt(a);
-                                          setFormAlt({
-                                            texto: a.texto,
-                                            correta: a.correta,
-                                            ordem: a.ordem,
-                                          });
-                                          setModalAlt(true);
-                                        }}
-                                      >
-                                        Editar
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="btn btn--ghost btn--small"
-                                        onClick={() => excluirAlt(a.id)}
-                                      >
-                                        ×
-                                      </button>
-                                    </li>
-                                  ))}
-                                </ul>
-                                <button
-                                  type="button"
-                                  className="btn btn--ghost btn--small"
-                                  onClick={() => {
-                                    setPergAltId(p.id);
-                                    setEditAlt(null);
-                                    setFormAlt(altVazia);
-                                    setModalAlt(true);
-                                  }}
-                                >
-                                  + Alternativa
-                                </button>
-                              </td>
-                              <td className="td-actions">
-                                <button
-                                  type="button"
-                                  className="btn btn--ghost btn--small"
-                                  onClick={() => {
-                                    setEditPerg(p);
-                                    setFormPerg({
-                                      enunciado: p.enunciado,
-                                      ordem: p.ordem,
-                                    });
-                                    setModalPerg(true);
-                                  }}
-                                >
-                                  Editar
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn btn--ghost btn--small"
-                                  onClick={() => excluirPergunta(p)}
-                                >
-                                  Excluir
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                          {(quiz.perguntas || []).length === 0 && (
-                            <tr>
-                              <td colSpan={3}>Nenhuma pergunta.</td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
+                    {renderQuizPerguntas(atividadeAtual)}
+                  </div>
                 )}
               </section>
             </div>
           </li>
         )}
 
-        {moduloSel != null && aulaSel == null && aulas.length > 0 && (
-          <li className="conteudo-cascade__placeholder">
-            Selecione uma aula acima para ver materiais e prova.
-          </li>
-        )}
+        <li className="conteudo-cascade__step">
+          <header className="conteudo-cascade__head">
+            <span className="conteudo-cascade__n">★</span>
+            <div>
+              <h2>Prova avaliadora do curso</h2>
+              <p className="conteudo-cascade__hint">
+                Fora dos módulos · aprovação libera o certificado
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button
+                type="button"
+                className="btn btn--primary btn--small"
+                onClick={() => abrirModalQuiz("prova", prova)}
+              >
+                {prova ? "Editar prova" : "Nova prova"}
+              </button>
+              {prova && (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--small"
+                  onClick={() => excluirQuiz(prova, "prova")}
+                >
+                  Excluir
+                </button>
+              )}
+            </div>
+          </header>
+          {!prova && (
+            <p className="page-lead">
+              Nenhuma prova cadastrada. Sem prova, o certificado usa o fluxo legado (quizzes de
+              aula, se houver).
+            </p>
+          )}
+          {prova && (
+            <div className="conteudo-cascade__quiz-body">
+              <p className="page-lead">
+                {prova.titulo} — nota mín. {prova.nota_minima}%
+              </p>
+              {renderQuizPerguntas(prova)}
+            </div>
+          )}
+        </li>
       </ol>
 
       <Modal
@@ -1051,8 +1119,19 @@ export function CursoConteudoPage() {
 
       <Modal
         aberto={modalQuiz}
-        titulo={quiz ? "Editar quiz" : "Novo quiz"}
-        onFechar={() => setModalQuiz(false)}
+        titulo={
+          quizEditorAlvo === "prova"
+            ? prova && editQuizId
+              ? "Editar prova"
+              : "Nova prova"
+            : editQuizId
+              ? "Editar atividade"
+              : "Nova atividade"
+        }
+        onFechar={() => {
+          setModalQuiz(false);
+          setEditQuizId(null);
+        }}
       >
         <form className="form-grid" onSubmit={salvarQuiz}>
           <label>
@@ -1075,16 +1154,18 @@ export function CursoConteudoPage() {
               }
             />
           </label>
-          <label className="check-row">
-            <input
-              type="checkbox"
-              checked={formQuiz.bloqueia_proxima}
-              onChange={(e) =>
-                setFormQuiz({ ...formQuiz, bloqueia_proxima: e.target.checked })
-              }
-            />
-            Bloqueia próxima aula se reprovado
-          </label>
+          {quizEditorAlvo === "atividade" && (
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={formQuiz.bloqueia_proxima}
+                onChange={(e) =>
+                  setFormQuiz({ ...formQuiz, bloqueia_proxima: e.target.checked })
+                }
+              />
+              Bloqueia avanço (legado)
+            </label>
+          )}
           <label className="check-row">
             <input
               type="checkbox"

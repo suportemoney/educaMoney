@@ -205,6 +205,18 @@ class CursoDetalheAlunoView(APIView):
                 "id", flat=True
             )
         )
+        quiz_ids += list(
+            Quiz.objects.filter(
+                modulo__curso=curso,
+                tipo=Quiz.Tipo.ATIVIDADE,
+                ativo=True,
+            ).values_list("id", flat=True)
+        )
+        prova = Quiz.objects.filter(
+            curso=curso, tipo=Quiz.Tipo.PROVA_CURSO, ativo=True
+        ).first()
+        if prova:
+            quiz_ids.append(prova.id)
         quiz_aprovado_map = {
             t.quiz_id: True
             for t in TentativaQuiz.objects.filter(
@@ -615,6 +627,104 @@ class QuizAlunoView(APIView):
         return Response(
             TentativaQuizSerializer(tentativa).data, status=status.HTTP_201_CREATED
         )
+
+
+def _submeter_quiz(request, quiz):
+    """Corrige e registra tentativa de um quiz qualquer."""
+    from .models import Alternativa, RespostaAluno, TentativaQuiz
+    from .serializers import SubmeterQuizSerializer, TentativaQuizSerializer
+
+    ser = SubmeterQuizSerializer(data=request.data)
+    ser.is_valid(raise_exception=True)
+    respostas = ser.validated_data["respostas"]
+    perguntas = {p.id: p for p in quiz.perguntas.all()}
+    if not perguntas:
+        return Response(
+            {"detail": "Quiz sem perguntas."}, status=status.HTTP_400_BAD_REQUEST
+        )
+    acertos = 0
+    pares = []
+    for item in respostas:
+        pid = item["pergunta_id"]
+        aid = item["alternativa_id"]
+        if pid not in perguntas:
+            return Response(
+                {"detail": f"Pergunta {pid} inválida."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            alt = Alternativa.objects.get(pk=aid, pergunta_id=pid)
+        except Alternativa.DoesNotExist:
+            return Response(
+                {"detail": f"Alternativa {aid} inválida."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if alt.correta:
+            acertos += 1
+        pares.append((perguntas[pid], alt))
+    nota = int(round(100 * acertos / len(perguntas)))
+    aprovado = nota >= quiz.nota_minima
+    tentativa = TentativaQuiz.objects.create(
+        usuario=request.user, quiz=quiz, nota=nota, aprovado=aprovado
+    )
+    RespostaAluno.objects.bulk_create(
+        [
+            RespostaAluno(tentativa=tentativa, pergunta=perg, alternativa=alt)
+            for perg, alt in pares
+        ]
+    )
+    return Response(
+        TentativaQuizSerializer(tentativa).data, status=status.HTTP_201_CREATED
+    )
+
+
+class CursoProvaAlunoView(APIView):
+    """Prova avaliadora do curso (certificado)."""
+
+    permission_classes = [IsAluno]
+
+    def get(self, request, curso_id):
+        from .models import Quiz, TentativaQuiz
+        from .serializers import QuizAlunoSerializer
+
+        if not aluno_tem_acesso_curso(request.user, curso_id):
+            return Response({"detail": "Sem acesso."}, status=status.HTTP_403_FORBIDDEN)
+        quiz = (
+            Quiz.objects.filter(
+                curso_id=curso_id, tipo=Quiz.Tipo.PROVA_CURSO, ativo=True
+            )
+            .prefetch_related("perguntas__alternativas")
+            .first()
+        )
+        if not quiz:
+            return Response(None)
+        ultima = (
+            TentativaQuiz.objects.filter(usuario=request.user, quiz=quiz)
+            .order_by("-criado_em")
+            .first()
+        )
+        aprovado = TentativaQuiz.objects.filter(
+            usuario=request.user, quiz=quiz, aprovado=True
+        ).exists()
+        return Response(
+            QuizAlunoSerializer(
+                quiz,
+                context={
+                    "quiz_aprovado_map": {quiz.id: aprovado},
+                    "quiz_nota_map": {quiz.id: ultima.nota if ultima else None},
+                },
+            ).data
+        )
+
+    def post(self, request, curso_id):
+        from .models import Quiz
+
+        if not aluno_tem_acesso_curso(request.user, curso_id):
+            return Response({"detail": "Sem acesso."}, status=status.HTTP_403_FORBIDDEN)
+        quiz = get_object_or_404(
+            Quiz, curso_id=curso_id, tipo=Quiz.Tipo.PROVA_CURSO, ativo=True
+        )
+        return _submeter_quiz(request, quiz)
 
 
 class CertificadosAlunoView(APIView):

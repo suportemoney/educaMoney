@@ -25,6 +25,7 @@ from .aluno_views import (
     CertificadosAlunoView,
     ConjuntosAlunoView,
     CursoDetalheAlunoView,
+    CursoProvaAlunoView,
     FinancasAlunoView,
     MeusCursosView,
     MinhasAtivacoesView,
@@ -40,8 +41,11 @@ from .lms_admin_views import (
     AdminCertificadoEmitirView,
     AdminCertificadoListView,
     AdminCertificadoRevogarView,
+    AdminCursoProvaView,
     AdminMaterialDetailView,
     AdminMaterialListCreateView,
+    AdminModuloAtividadesView,
+    AdminModuloMateriaisView,
     AdminPerguntaDetailView,
     AdminPerguntaListCreateView,
     AdminQuizByAulaView,
@@ -78,6 +82,11 @@ aluno_urlpatterns = [
     path("meus-cursos/", MeusCursosView.as_view(), name="aluno-meus-cursos"),
     path("ativacoes/", MinhasAtivacoesView.as_view(), name="aluno-ativacoes"),
     path("cursos/<int:pk>/", CursoDetalheAlunoView.as_view(), name="aluno-curso-detail"),
+    path(
+        "cursos/<int:curso_id>/prova/",
+        CursoProvaAlunoView.as_view(),
+        name="aluno-curso-prova",
+    ),
     path("aulas/<int:pk>/", AulaDetalheAlunoView.as_view(), name="aluno-aula-detail"),
     path(
         "aulas/<int:pk>/progresso/",
@@ -121,6 +130,21 @@ admin_urlpatterns = [
         "modulos/<int:modulo_id>/aulas/",
         AdminAulaListCreateView.as_view(),
         name="admin-modulo-aulas",
+    ),
+    path(
+        "modulos/<int:modulo_id>/materiais/",
+        AdminModuloMateriaisView.as_view(),
+        name="admin-modulo-materiais",
+    ),
+    path(
+        "modulos/<int:modulo_id>/atividades/",
+        AdminModuloAtividadesView.as_view(),
+        name="admin-modulo-atividades",
+    ),
+    path(
+        "cursos/<int:curso_id>/prova/",
+        AdminCursoProvaView.as_view(),
+        name="admin-curso-prova",
     ),
     path(
         "aulas/<int:pk>/",

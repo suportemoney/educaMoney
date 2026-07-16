@@ -508,7 +508,11 @@ class AulaAlunoSerializer(serializers.ModelSerializer):
         return ProgressoAulaSerializer(prog).data
 
     def get_materiais(self, obj):
-        mats = [m for m in obj.materiais.all() if m.ativo]
+        from django.db.models import Q
+
+        mats = MaterialAula.objects.filter(ativo=True).filter(
+            Q(aula=obj) | Q(modulo_id=obj.modulo_id, aula__isnull=True)
+        ).order_by("ordem", "id")
         return MaterialAulaSerializer(
             mats, many=True, context=self.context
         ).data
@@ -533,6 +537,7 @@ class AulaAlunoSerializer(serializers.ModelSerializer):
 class CursoDetalheAlunoSerializer(serializers.ModelSerializer):
     instrutor_nome = serializers.SerializerMethodField()
     modulos = serializers.SerializerMethodField()
+    prova = serializers.SerializerMethodField()
     aulas_total = serializers.IntegerField(read_only=True)
     aulas_concluidas = serializers.IntegerField(read_only=True)
     progresso_pct = serializers.IntegerField(read_only=True)
@@ -545,6 +550,7 @@ class CursoDetalheAlunoSerializer(serializers.ModelSerializer):
             "descricao",
             "instrutor_nome",
             "modulos",
+            "prova",
             "aulas_total",
             "aulas_concluidas",
             "progresso_pct",
@@ -557,10 +563,17 @@ class CursoDetalheAlunoSerializer(serializers.ModelSerializer):
 
     def get_modulos(self, obj):
         data = []
+        tentativas_map = self.context.get("quiz_aprovado_map") or {}
         for m in obj.modulos.all():
             if not m.ativo:
                 continue
             aulas = [a for a in m.aulas.all() if a.ativo]
+            mats = MaterialAula.objects.filter(
+                modulo=m, ativo=True, aula__isnull=True
+            ).order_by("ordem", "id")
+            atvs = Quiz.objects.filter(
+                modulo=m, tipo=Quiz.Tipo.ATIVIDADE, ativo=True
+            ).order_by("id")
             data.append(
                 {
                     "id": m.id,
@@ -569,9 +582,35 @@ class CursoDetalheAlunoSerializer(serializers.ModelSerializer):
                     "aulas": AulaAlunoSerializer(
                         aulas, many=True, context=self.context
                     ).data,
+                    "materiais": MaterialAulaSerializer(
+                        mats, many=True, context=self.context
+                    ).data,
+                    "atividades": [
+                        {
+                            "id": q.id,
+                            "titulo": q.titulo,
+                            "nota_minima": q.nota_minima,
+                            "aprovado": bool(tentativas_map.get(q.id)),
+                        }
+                        for q in atvs
+                    ],
                 }
             )
         return data
+
+    def get_prova(self, obj):
+        prova = Quiz.objects.filter(
+            curso=obj, tipo=Quiz.Tipo.PROVA_CURSO, ativo=True
+        ).first()
+        if not prova:
+            return None
+        tentativas_map = self.context.get("quiz_aprovado_map") or {}
+        return {
+            "id": prova.id,
+            "titulo": prova.titulo,
+            "nota_minima": prova.nota_minima,
+            "aprovado": bool(tentativas_map.get(prova.id)),
+        }
 
 
 class ModuloAdminSerializer(serializers.ModelSerializer):
@@ -814,8 +853,17 @@ class MaterialAulaSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = MaterialAula
-        fields = ("id", "aula", "titulo", "arquivo", "arquivo_url", "ordem", "ativo")
-        read_only_fields = ("aula",)
+        fields = (
+            "id",
+            "modulo",
+            "aula",
+            "titulo",
+            "arquivo",
+            "arquivo_url",
+            "ordem",
+            "ativo",
+        )
+        read_only_fields = ("modulo", "aula")
         extra_kwargs = {"arquivo": {"required": False}}
 
     def get_arquivo_url(self, obj):
@@ -850,14 +898,17 @@ class QuizAdminSerializer(serializers.ModelSerializer):
         model = Quiz
         fields = (
             "id",
+            "tipo",
             "aula",
+            "modulo",
+            "curso",
             "titulo",
             "nota_minima",
             "bloqueia_proxima",
             "ativo",
             "perguntas",
         )
-        read_only_fields = ("aula",)
+        read_only_fields = ("aula", "modulo", "curso", "tipo")
 
 
 class AlternativaAlunoSerializer(serializers.ModelSerializer):

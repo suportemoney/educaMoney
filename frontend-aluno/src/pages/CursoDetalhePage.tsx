@@ -92,9 +92,21 @@ export function CursoDetalhePage() {
               {curso.aulas_concluidas}/{curso.aulas_total} aulas · {curso.progresso_pct}%
             </p>
           </div>
-          {(curso.certificado || curso.certificado_elegivel) && (
+          {(curso.certificado || curso.certificado_elegivel || curso.prova) && (
             <div className="bento-cell" style={{ marginBottom: "1rem" }}>
               <h2>Certificado</h2>
+              {curso.prova && (
+                <p style={{ marginBottom: "0.75rem" }}>
+                  Prova: {curso.prova.titulo}
+                  {curso.prova.aprovado ? " · aprovada" : ""}{" "}
+                  <Link
+                    to={`/meus-cursos/${cursoId}/prova`}
+                    className="btn btn--ghost btn--small"
+                  >
+                    {curso.prova.aprovado ? "Ver prova" : "Fazer prova"}
+                  </Link>
+                </p>
+              )}
               {curso.certificado ? (
                 <p>
                   Código <strong>{curso.certificado.codigo}</strong>{" "}
@@ -104,7 +116,6 @@ export function CursoDetalhePage() {
                     target="_blank"
                     rel="noreferrer"
                     onClick={(e) => {
-                      // Abre com Authorization via fetch blob se necessário; link direto precisa token
                       e.preventDefault();
                       if (!access) return;
                       fetch(
@@ -129,7 +140,7 @@ export function CursoDetalhePage() {
                   type="button"
                   className="btn btn--primary btn--small"
                   onClick={emitirCertificado}
-                  disabled={emitindo}
+                  disabled={emitindo || !curso.certificado_elegivel}
                 >
                   {emitindo ? "Emitindo…" : "Emitir certificado"}
                 </button>
@@ -158,13 +169,47 @@ export function CursoDetalhePage() {
                   <span>
                     {a.progresso?.concluida ? "✓ " : ""}
                     {a.titulo}
-                    {a.quiz ? (a.quiz.aprovado ? " · quiz ok" : " · quiz") : ""}
                   </span>
                   <span className="portal-muted">Assistir</span>
                 </Link>
               </li>
             ))}
           </ul>
+          {(m.materiais?.length ?? 0) > 0 && (
+            <div style={{ marginTop: "0.75rem" }}>
+              <h3 style={{ fontSize: "0.95rem" }}>Materiais</h3>
+              <ul className="aula-list">
+                {m.materiais!.map((mat) => (
+                  <li key={mat.id}>
+                    {mat.arquivo_url ? (
+                      <a
+                        href={mat.arquivo_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="aula-list__link"
+                      >
+                        <span>{mat.titulo}</span>
+                        <span className="portal-muted">Baixar</span>
+                      </a>
+                    ) : (
+                      <span>{mat.titulo}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {(m.atividades?.length ?? 0) > 0 && (
+            <p className="portal-muted" style={{ marginTop: "0.5rem" }}>
+              Atividades:{" "}
+              {m.atividades!.map((at) => (
+                <span key={at.id}>
+                  {at.titulo}
+                  {at.aprovado ? " ✓" : ""}{" "}
+                </span>
+              ))}
+            </p>
+          )}
         </section>
       ))}
     </div>

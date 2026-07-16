@@ -49,7 +49,7 @@ export type QuizResumo = {
   id: number;
   titulo: string;
   nota_minima: number;
-  bloqueia_proxima: boolean;
+  bloqueia_proxima?: boolean;
   aprovado: boolean;
 };
 
@@ -156,6 +156,8 @@ export type ModuloAluno = {
   titulo: string;
   ordem: number;
   aulas: AulaAluno[];
+  materiais?: MaterialAluno[];
+  atividades?: QuizResumo[];
 };
 
 export type CursoDetalhe = {
@@ -164,6 +166,7 @@ export type CursoDetalhe = {
   descricao: string;
   instrutor_nome: string | null;
   modulos: ModuloAluno[];
+  prova?: QuizResumo | null;
   aulas_total: number;
   aulas_concluidas: number;
   progresso_pct: number;

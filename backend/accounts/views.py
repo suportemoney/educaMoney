@@ -1,8 +1,11 @@
 import secrets
+from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.cache import cache
+from django.db.models import Q
+from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
@@ -10,7 +13,18 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from catalog.models import Curso, Plano, TokenKey
+from catalog.models import (
+    Ativacao,
+    Aula,
+    Categoria,
+    Conjunto,
+    Curso,
+    MaterialAula,
+    Plano,
+    Quiz,
+    TicketSecretaria,
+    TokenKey,
+)
 from accounts.models import Perfil
 from accounts.permissions import (
     IsAdminOrGestor,
@@ -197,58 +211,147 @@ class AdminDashboardView(APIView):
 
     def get(self, request):
         papel = obter_papel(request.user)
+        agora = timezone.now()
         base = {
             "papel": papel,
             "titulo": "Painel EducaMoney",
             "mensagem": "Métricas ao vivo do catálogo e operação.",
+            "metricas": [],
+            "status_operacao": [],
+            "atalhos": [],
+            "insights": [],
         }
+
+        def metrica(label, valor, detalhe=""):
+            return {"label": label, "valor": valor, "detalhe": detalhe}
+
+        def status_item(label, valor, tone="info"):
+            return {"label": label, "valor": valor, "tone": tone}
+
+        def atalho(label, to, tone="default"):
+            return {"label": label, "to": to, "tone": tone}
+
+        ativacoes_vigentes = Ativacao.objects.filter(ativo=True).filter(
+            Q(valido_ate__isnull=True) | Q(valido_ate__gte=agora)
+        )
+        tickets_abertos = TicketSecretaria.objects.filter(
+            status__in=[
+                TicketSecretaria.Status.ABERTO,
+                TicketSecretaria.Status.EM_ANDAMENTO,
+            ]
+        )
+        cursos_com_conteudo = Curso.objects.filter(
+            modulos__ativo=True, modulos__aulas__ativo=True, ativo=True
+        ).distinct()
+        cursos_sem_conteudo = Curso.objects.filter(ativo=True).exclude(
+            modulos__aulas__ativo=True
+        )
+        ativacoes_proximas_vencer = ativacoes_vigentes.filter(
+            valido_ate__isnull=False,
+            valido_ate__lte=agora + timedelta(days=7),
+        ).count()
+
         if papel == Perfil.Papel.INSTRUTOR:
-            meus = Curso.objects.filter(instrutor=request.user, ativo=True).count()
+            meus_cursos = Curso.objects.filter(instrutor=request.user, ativo=True)
+            minhas_aulas = Aula.objects.filter(modulo__curso__instrutor=request.user, ativo=True)
+            meus_materiais = MaterialAula.objects.filter(
+                aula__modulo__curso__instrutor=request.user, ativo=True
+            )
+            meus_quizzes = Quiz.objects.filter(aula__modulo__curso__instrutor=request.user, ativo=True)
             base["metricas"] = [
-                {"label": "Cursos lecionados", "valor": meus},
-                {"label": "Alunos ativos", "valor": "—"},
-                {"label": "Taxa de conclusão", "valor": "—"},
+                metrica("Cursos lecionados", meus_cursos.count(), "Cursos ativos com você como instrutor"),
+                metrica("Aulas publicadas", minhas_aulas.count(), "Aulas ativas no catálogo"),
+                metrica("Materiais", meus_materiais.count(), "Arquivos de apoio publicados"),
+                metrica("Quizzes", meus_quizzes.count(), "Quizzes ativos nas suas aulas"),
             ]
+            base["status_operacao"] = [
+                status_item("Cursos sem conteúdo", meus_cursos.exclude(modulos__aulas__ativo=True).distinct().count(), "warn"),
+                status_item("Aulas sem quiz", minhas_aulas.exclude(quiz__ativo=True).distinct().count(), "info"),
+                status_item("Aulas sem material", minhas_aulas.exclude(materiais__ativo=True).distinct().count(), "info"),
+            ]
+            base["atalhos"] = [
+                atalho("Abrir cursos", "/cursos", "primary"),
+                atalho("Editar conteúdo", "/cursos", "default"),
+            ]
+            if meus_cursos.count() == 0:
+                base["insights"].append("Você ainda não está vinculado a cursos ativos.")
+            if minhas_aulas.exclude(quiz__ativo=True).exists():
+                base["insights"].append("Há aulas sem quiz publicado para reforçar retenção.")
         elif papel == Perfil.Papel.MERCHANT:
+            tokens_disponiveis = TokenKey.objects.filter(status=TokenKey.Status.DISPONIVEL).count()
+            tokens_usados = TokenKey.objects.filter(status=TokenKey.Status.USADO).count()
+            ativacoes_recentes = Ativacao.objects.filter(
+                data_ativacao__gte=agora - timedelta(days=7)
+            ).count()
             base["metricas"] = [
-                {
-                    "label": "Tokens gerados",
-                    "valor": TokenKey.objects.count(),
-                },
-                {
-                    "label": "Tokens disponíveis",
-                    "valor": TokenKey.objects.filter(
-                        status=TokenKey.Status.DISPONIVEL
-                    ).count(),
-                },
-                {
-                    "label": "Tokens usados",
-                    "valor": TokenKey.objects.filter(
-                        status=TokenKey.Status.USADO
-                    ).count(),
-                },
+                metrica("Tokens gerados", TokenKey.objects.count(), "Base total emitida"),
+                metrica("Tokens disponíveis", tokens_disponiveis, "Prontos para ativação"),
+                metrica("Tokens usados", tokens_usados, "Já convertidos em acesso"),
+                metrica("Ativações recentes", ativacoes_recentes, "Últimos 7 dias"),
             ]
+            base["status_operacao"] = [
+                status_item("Revogados", TokenKey.objects.filter(status=TokenKey.Status.REVOGADO).count(), "warn"),
+                status_item("Ativações vigentes", ativacoes_vigentes.count(), "good"),
+                status_item("Vencendo em 7 dias", ativacoes_proximas_vencer, "warn"),
+            ]
+            base["atalhos"] = [
+                atalho("Gerar tokens", "/tokens", "primary"),
+                atalho("Ver ativações", "/ativacoes", "default"),
+            ]
+            if tokens_disponiveis < 10:
+                base["insights"].append("Estoque baixo de tokens disponíveis para novas vendas.")
+            if ativacoes_proximas_vencer:
+                base["insights"].append("Há ativações próximas do vencimento para ação comercial.")
         elif papel == Perfil.Papel.PR:
+            cursos_ativos = Curso.objects.filter(ativo=True)
             base["metricas"] = [
-                {"label": "Cursos", "valor": Curso.objects.count()},
-                {
-                    "label": "Com instrutor",
-                    "valor": Curso.objects.exclude(instrutor=None).count(),
-                },
-                {
-                    "label": "Instrutores",
-                    "valor": User.objects.filter(
-                        perfil__papel=Perfil.Papel.INSTRUTOR
-                    ).count(),
-                },
+                metrica("Cursos ativos", cursos_ativos.count(), "Publicados no catálogo"),
+                metrica("Com instrutor", cursos_ativos.exclude(instrutor=None).count(), "Cursos com responsável"),
+                metrica("Sem conteúdo", cursos_sem_conteudo.count(), "Cursos sem aulas ativas"),
+                metrica("Instrutores", User.objects.filter(perfil__papel=Perfil.Papel.INSTRUTOR).count(), "Base de instrutores"),
             ]
+            base["status_operacao"] = [
+                status_item("Conjuntos ativos", Conjunto.objects.filter(ativo=True).count(), "good"),
+                status_item("Categorias ativas", Categoria.objects.filter(ativo=True).count(), "info"),
+                status_item("Cursos sem instrutor", cursos_ativos.filter(instrutor=None).count(), "warn"),
+            ]
+            base["atalhos"] = [
+                atalho("Gerenciar cursos", "/cursos", "primary"),
+                atalho("Categorias", "/categorias", "default"),
+                atalho("Conjuntos", "/conjuntos", "default"),
+            ]
+            if cursos_sem_conteudo.exists():
+                base["insights"].append("Existem cursos ativos sem conteúdo publicado.")
+            if cursos_ativos.filter(instrutor=None).exists():
+                base["insights"].append("Alguns cursos ainda não têm instrutor vinculado.")
         else:
+            alunos_ativos = User.objects.filter(
+                perfil__papel=Perfil.Papel.ALUNO, is_active=True
+            ).count()
             base["metricas"] = [
-                {"label": "Usuários", "valor": User.objects.count()},
-                {"label": "Planos ativos", "valor": Plano.objects.filter(ativo=True).count()},
-                {
-                    "label": "Tokens",
-                    "valor": TokenKey.objects.count(),
-                },
+                metrica("Alunos ativos", alunos_ativos, "Base com acesso operacional"),
+                metrica("Planos ativos", Plano.objects.filter(ativo=True).count(), "Ofertas disponíveis"),
+                metrica("Ativações vigentes", ativacoes_vigentes.count(), "Acessos dentro da validade"),
+                metrica("Tickets abertos", tickets_abertos.count(), "Fila de suporte"),
             ]
+            base["status_operacao"] = [
+                status_item("Tokens disponíveis", TokenKey.objects.filter(status=TokenKey.Status.DISPONIVEL).count(), "good"),
+                status_item("Cursos com conteúdo", cursos_com_conteudo.count(), "info"),
+                status_item("Vencendo em 7 dias", ativacoes_proximas_vencer, "warn"),
+                status_item("Tickets em andamento", TicketSecretaria.objects.filter(status=TicketSecretaria.Status.EM_ANDAMENTO).count(), "warn"),
+            ]
+            base["atalhos"] = [
+                atalho("Abrir alunos", "/alunos", "primary"),
+                atalho("Ver ativações", "/ativacoes", "default"),
+                atalho("Atender secretaria", "/secretaria", "default"),
+                atalho("Gerenciar cursos", "/cursos", "default"),
+            ]
+            if tickets_abertos.exists():
+                base["insights"].append("Há tickets pendentes exigindo resposta da equipe.")
+            if ativacoes_proximas_vencer:
+                base["insights"].append("Ativações próximas do vencimento pedem ação preventiva.")
+            if cursos_sem_conteudo.exists():
+                base["insights"].append("Nem todos os cursos ativos têm conteúdo suficiente publicado.")
+        if not base["insights"]:
+            base["insights"].append("Operação estável no momento, sem alertas prioritários.")
         return Response(base)

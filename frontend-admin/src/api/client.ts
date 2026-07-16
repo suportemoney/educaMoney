@@ -233,7 +233,22 @@ export type DashboardPayload = {
   papel: Papel;
   titulo: string;
   mensagem: string;
-  metricas: { label: string; valor: string | number }[];
+  metricas: {
+    label: string;
+    valor: string | number;
+    detalhe?: string;
+  }[];
+  status_operacao: {
+    label: string;
+    valor: string | number;
+    tone?: "good" | "warn" | "info" | "default";
+  }[];
+  atalhos: {
+    label: string;
+    to: string;
+    tone?: "primary" | "default";
+  }[];
+  insights: string[];
 };
 
 export class ApiError extends Error {

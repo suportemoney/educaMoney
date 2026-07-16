@@ -45,6 +45,12 @@ function quizValido(q: QuizAdmin | null | undefined): q is QuizAdmin {
   return !!q && typeof q.id === "number" && Number.isFinite(q.id);
 }
 
+/** Próxima ordem = 1 + maior existente (ou 0 se lista vazia). */
+function proximaOrdem(itens: { ordem: number }[]): number {
+  if (!itens.length) return 0;
+  return Math.max(...itens.map((i) => i.ordem ?? 0)) + 1;
+}
+
 export function CursoConteudoPage() {
   const { cursoId } = useParams<{ cursoId: string }>();
   const [searchParams] = useSearchParams();
@@ -514,7 +520,10 @@ export function CursoConteudoPage() {
             onClick={() => {
               setPergQuizId(q.id);
               setEditPerg(null);
-              setFormPerg(perguntaVazia);
+              setFormPerg({
+                enunciado: "",
+                ordem: proximaOrdem(q.perguntas || []),
+              });
               setModalPerg(true);
             }}
           >
@@ -574,7 +583,11 @@ export function CursoConteudoPage() {
                         setPergQuizId(q.id);
                         setPergAltId(p.id);
                         setEditAlt(null);
-                        setFormAlt(altVazia);
+                        setFormAlt({
+                          texto: "",
+                          correta: false,
+                          ordem: proximaOrdem(p.alternativas || []),
+                        });
                         setModalAlt(true);
                       }}
                     >
@@ -1200,6 +1213,7 @@ export function CursoConteudoPage() {
         onFechar={() => setModalPerg(false)}
       >
         <form className="form-grid" onSubmit={salvarPergunta}>
+          {erro && <p className="form-erro">{erro}</p>}
           <label>
             Enunciado
             <textarea
@@ -1207,16 +1221,6 @@ export function CursoConteudoPage() {
               onChange={(e) => setFormPerg({ ...formPerg, enunciado: e.target.value })}
               required
               rows={3}
-            />
-          </label>
-          <label>
-            Ordem
-            <input
-              type="number"
-              value={formPerg.ordem}
-              onChange={(e) =>
-                setFormPerg({ ...formPerg, ordem: Number(e.target.value) })
-              }
             />
           </label>
           <button className="btn btn--primary" type="submit" disabled={salvando}>
@@ -1234,6 +1238,7 @@ export function CursoConteudoPage() {
         }}
       >
         <form className="form-grid" onSubmit={salvarAlt}>
+          {erro && <p className="form-erro">{erro}</p>}
           <label>
             Texto
             <input
@@ -1249,16 +1254,6 @@ export function CursoConteudoPage() {
               onChange={(e) => setFormAlt({ ...formAlt, correta: e.target.checked })}
             />
             Correta
-          </label>
-          <label>
-            Ordem
-            <input
-              type="number"
-              value={formAlt.ordem}
-              onChange={(e) =>
-                setFormAlt({ ...formAlt, ordem: Number(e.target.value) })
-              }
-            />
           </label>
           <button className="btn btn--primary" type="submit" disabled={salvando}>
             {salvando ? "Salvando…" : "Salvar"}

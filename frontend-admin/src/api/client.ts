@@ -90,6 +90,8 @@ export type AlunoAdmin = {
   first_name: string;
   is_active: boolean;
   ra: string | null;
+  foto_url?: string | null;
+  bio?: string;
   ativacoes_vigentes: number;
   planos: string[];
   progresso: {
@@ -104,6 +106,16 @@ export type AlunoAdmin = {
     plano_nome: string;
     valido_ate: string | null;
     ativo: boolean;
+    vigente?: boolean;
+    data_ativacao?: string;
+  }[];
+  ativacoes_historico?: {
+    id: number;
+    plano_nome: string;
+    valido_ate: string | null;
+    ativo: boolean;
+    vigente?: boolean;
+    data_ativacao?: string;
   }[];
   certificados?: {
     id: number;

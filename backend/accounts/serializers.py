@@ -147,14 +147,24 @@ class AdminUserUpdateSerializer(serializers.Serializer):
     bio = serializers.CharField(required=False, allow_blank=True)
     is_active = serializers.BooleanField(required=False)
 
+    def validate_password(self, value):
+        if value:
+            validate_password(value)
+        return value
+
     def update(self, user, validated_data):
         if "email" in validated_data:
             user.email = validated_data["email"].strip().lower()
         if "first_name" in validated_data:
             user.first_name = validated_data["first_name"]
         if "is_active" in validated_data:
-            user.is_active = validated_data["is_active"]
-        if "password" in validated_data:
+            # Multipart manda "true"/"false" como string
+            raw = validated_data["is_active"]
+            if isinstance(raw, str):
+                user.is_active = raw.lower() in ("1", "true", "yes", "on")
+            else:
+                user.is_active = bool(raw)
+        if "password" in validated_data and validated_data["password"]:
             user.set_password(validated_data["password"])
         papel = validated_data.get("papel")
         if papel == Perfil.Papel.ADMINISTRADOR:

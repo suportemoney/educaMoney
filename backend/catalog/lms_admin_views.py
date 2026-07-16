@@ -8,13 +8,18 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+
 from accounts.models import Perfil
 from accounts.permissions import IsAdminOrGestor, IsPROrAbove
+from accounts.ra import garantir_ra
 
 from .access import ativacoes_vigentes_qs, cursos_liberados_aluno
 from .certificados import emitir_certificado
 from .models import (
     Alternativa,
+    Ativacao,
     Aula,
     Certificado,
     MaterialAula,
@@ -96,6 +101,88 @@ class AdminMaterialDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+def _foto_url(request, perfil):
+    if not perfil or not perfil.foto:
+        return None
+    url = perfil.foto.url
+    return request.build_absolute_uri(url) if request else url
+
+
+def _bool_param(raw, default=None):
+    if raw is None:
+        return default
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).lower() in ("1", "true", "yes", "on")
+
+
+def _serializar_aluno_lista(request, u):
+    vig = list(ativacoes_vigentes_qs(u).select_related("plano"))
+    cursos = cursos_liberados_aluno(u)
+    progresso = [_stats_progresso(u, c) for c in cursos[:20]]
+    return {
+        "id": u.id,
+        "username": u.username,
+        "email": u.email,
+        "first_name": u.first_name,
+        "is_active": u.is_active,
+        "ra": getattr(u.perfil, "ra", None),
+        "foto_url": _foto_url(request, getattr(u, "perfil", None)),
+        "bio": getattr(u.perfil, "bio", "") or "",
+        "ativacoes_vigentes": len(vig),
+        "planos": [a.plano.nome for a in vig],
+        "progresso": progresso,
+    }
+
+
+def _serializar_aluno_detalhe(request, u):
+    vig = list(ativacoes_vigentes_qs(u).select_related("plano", "token_key"))
+    todas = list(
+        Ativacao.objects.filter(usuario=u)
+        .select_related("plano")
+        .order_by("-data_ativacao")
+    )
+    cursos = cursos_liberados_aluno(u)
+    certificados = Certificado.objects.filter(usuario=u).select_related("curso")
+    vig_ids = {a.id for a in vig}
+
+    def _item_ativacao(a):
+        return {
+            "id": a.id,
+            "plano_nome": a.plano.nome,
+            "valido_ate": a.valido_ate,
+            "ativo": a.ativo,
+            "vigente": a.id in vig_ids,
+            "data_ativacao": a.data_ativacao,
+        }
+
+    return {
+        "id": u.id,
+        "username": u.username,
+        "email": u.email,
+        "first_name": u.first_name,
+        "is_active": u.is_active,
+        "ra": getattr(u.perfil, "ra", None),
+        "foto_url": _foto_url(request, getattr(u, "perfil", None)),
+        "bio": getattr(u.perfil, "bio", "") or "",
+        "ativacoes_vigentes": len(vig),
+        "planos": [a.plano.nome for a in vig],
+        "ativacoes": [_item_ativacao(a) for a in vig],
+        "ativacoes_historico": [_item_ativacao(a) for a in todas],
+        "progresso": [_stats_progresso(u, c) for c in cursos],
+        "certificados": [
+            {
+                "id": c.id,
+                "curso_titulo": c.curso.titulo,
+                "codigo": c.codigo,
+                "revogado": c.revogado,
+                "emitido_em": c.emitido_em,
+            }
+            for c in certificados
+        ],
+    }
+
+
 class AdminAlunoListView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsAdminOrGestor]
 
@@ -119,28 +206,62 @@ class AdminAlunoListView(APIView):
         ra = (request.query_params.get("ra") or "").strip()
         if ra:
             qs = qs.filter(perfil__ra__iexact=ra)
+        plano_id = (request.query_params.get("plano_id") or "").strip()
+        if plano_id.isdigit():
+            qs = qs.filter(
+                ativacoes__plano_id=int(plano_id),
+                ativacoes__ativo=True,
+            ).distinct()
 
         out = []
         for u in qs.order_by("first_name", "username")[:200]:
-            vig = list(ativacoes_vigentes_qs(u).select_related("plano"))
-            if request.query_params.get("com_plano") == "1" and not vig:
+            item = _serializar_aluno_lista(request, u)
+            if request.query_params.get("com_plano") == "1" and not item["ativacoes_vigentes"]:
                 continue
-            cursos = cursos_liberados_aluno(u)
-            progresso = [_stats_progresso(u, c) for c in cursos[:20]]
-            out.append(
-                {
-                    "id": u.id,
-                    "username": u.username,
-                    "email": u.email,
-                    "first_name": u.first_name,
-                    "is_active": u.is_active,
-                    "ra": getattr(u.perfil, "ra", None),
-                    "ativacoes_vigentes": len(vig),
-                    "planos": [a.plano.nome for a in vig],
-                    "progresso": progresso,
-                }
-            )
+            out.append(item)
         return Response(out)
+
+    def post(self, request):
+        username = (request.data.get("username") or "").strip()
+        email = (request.data.get("email") or "").strip().lower()
+        first_name = (request.data.get("first_name") or "").strip()
+        password = request.data.get("password") or ""
+        bio = (request.data.get("bio") or "").strip()
+
+        erros = {}
+        if not username:
+            erros["username"] = "Informe o usuário."
+        elif User.objects.filter(username=username).exists():
+            erros["username"] = "Usuário já existe."
+        if not email:
+            erros["email"] = "Informe o e-mail."
+        elif User.objects.filter(email__iexact=email).exists():
+            erros["email"] = "E-mail já em uso."
+        if not first_name:
+            erros["first_name"] = "Informe o nome."
+        if not password or len(password) < 8:
+            erros["password"] = "Senha com no mínimo 8 caracteres."
+        else:
+            try:
+                validate_password(password)
+            except DjangoValidationError as e:
+                erros["password"] = list(e.messages)
+        if erros:
+            return Response(erros, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User(username=username, email=email, first_name=first_name)
+        user.set_password(password)
+        user.save()
+        perfil, _ = Perfil.objects.update_or_create(
+            user=user,
+            defaults={"papel": Perfil.Papel.ALUNO, "bio": bio},
+        )
+        garantir_ra(perfil)
+        user = User.objects.select_related("perfil").get(pk=user.pk)
+        return Response(
+            _serializar_aluno_lista(request, user),
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class AdminAlunoDetailView(APIView):
@@ -152,41 +273,7 @@ class AdminAlunoDetailView(APIView):
             pk=pk,
             perfil__papel=Perfil.Papel.ALUNO,
         )
-        vig = list(ativacoes_vigentes_qs(u).select_related("plano", "token_key"))
-        cursos = cursos_liberados_aluno(u)
-        certificados = Certificado.objects.filter(usuario=u).select_related("curso")
-        return Response(
-            {
-                "id": u.id,
-                "username": u.username,
-                "email": u.email,
-                "first_name": u.first_name,
-                "is_active": u.is_active,
-                "ra": getattr(u.perfil, "ra", None),
-                "ativacoes_vigentes": len(vig),
-                "planos": [a.plano.nome for a in vig],
-                "ativacoes": [
-                    {
-                        "id": a.id,
-                        "plano_nome": a.plano.nome,
-                        "valido_ate": a.valido_ate,
-                        "ativo": a.ativo,
-                    }
-                    for a in vig
-                ],
-                "progresso": [_stats_progresso(u, c) for c in cursos],
-                "certificados": [
-                    {
-                        "id": c.id,
-                        "curso_titulo": c.curso.titulo,
-                        "codigo": c.codigo,
-                        "revogado": c.revogado,
-                        "emitido_em": c.emitido_em,
-                    }
-                    for c in certificados
-                ],
-            }
-        )
+        return Response(_serializar_aluno_detalhe(request, u))
 
     def patch(self, request, pk):
         u = get_object_or_404(
@@ -194,12 +281,60 @@ class AdminAlunoDetailView(APIView):
             pk=pk,
             perfil__papel=Perfil.Papel.ALUNO,
         )
-        if "is_active" in request.data:
-            u.is_active = bool(request.data.get("is_active"))
-            u.save(update_fields=["is_active"])
-        if "first_name" in request.data:
-            u.first_name = str(request.data.get("first_name") or "")[:150]
-            u.save(update_fields=["first_name"])
+        data = request.data
+        update_fields = []
+
+        if "first_name" in data:
+            u.first_name = str(data.get("first_name") or "")[:150]
+            update_fields.append("first_name")
+        if "email" in data:
+            email = str(data.get("email") or "").strip().lower()
+            if not email:
+                return Response(
+                    {"email": "Informe o e-mail."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if (
+                User.objects.filter(email__iexact=email)
+                .exclude(pk=u.pk)
+                .exists()
+            ):
+                return Response(
+                    {"email": "E-mail já em uso."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            u.email = email
+            update_fields.append("email")
+        if "is_active" in data:
+            u.is_active = _bool_param(data.get("is_active"), u.is_active)
+            update_fields.append("is_active")
+        if "password" in data and data.get("password"):
+            password = data.get("password")
+            try:
+                validate_password(password, user=u)
+            except DjangoValidationError as e:
+                return Response(
+                    {"password": list(e.messages)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            u.set_password(password)
+            update_fields.append("password")
+
+        if update_fields:
+            # password não é campo direto no save — set_password já marcou
+            campos = [f for f in update_fields if f != "password"]
+            if "password" in update_fields and not campos:
+                u.save()
+            elif campos:
+                u.save(update_fields=campos)
+                if "password" in update_fields:
+                    u.save()
+
+        perfil = u.perfil
+        if "bio" in data:
+            perfil.bio = str(data.get("bio") or "")
+            perfil.save(update_fields=["bio"])
+
         return self.get(request, pk)
 
 

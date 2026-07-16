@@ -176,9 +176,30 @@ class PortalHandoffConsumeView(APIView):
 
 class AdminUsuarioListCreateView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsAdminOrGestor]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get(self, request):
-        qs = User.objects.select_related("perfil").order_by("username")
+        # Lista só staff — alunos ficam em /api/admin/alunos/
+        qs = (
+            User.objects.select_related("perfil")
+            .exclude(perfil__papel=Perfil.Papel.ALUNO)
+            .order_by("username")
+        )
+        busca = (request.query_params.get("q") or "").strip()
+        if busca:
+            qs = qs.filter(
+                Q(username__icontains=busca)
+                | Q(email__icontains=busca)
+                | Q(first_name__icontains=busca)
+            )
+        papel = (request.query_params.get("papel") or "").strip()
+        if papel and papel != Perfil.Papel.ALUNO:
+            qs = qs.filter(perfil__papel=papel)
+        ativo = request.query_params.get("ativo")
+        if ativo == "1":
+            qs = qs.filter(is_active=True)
+        elif ativo == "0":
+            qs = qs.filter(is_active=False)
         data = UserSerializer(qs, many=True, context={"request": request}).data
         return Response(data)
 
@@ -194,15 +215,26 @@ class AdminUsuarioListCreateView(APIView):
 
 class AdminUsuarioDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsAdminOrGestor]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def patch(self, request, pk):
         try:
             user = User.objects.select_related("perfil").get(pk=pk)
         except User.DoesNotExist:
             return Response({"detail": "Usuário não encontrado."}, status=404)
+        if obter_papel(user) == Perfil.Papel.ALUNO:
+            return Response(
+                {"detail": "Alunos são gerenciados em /api/admin/alunos/."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         serializer = AdminUserUpdateSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.update(user, serializer.validated_data)
+        foto = request.FILES.get("foto")
+        if foto is not None:
+            perfil, _ = Perfil.objects.get_or_create(user=user)
+            perfil.foto = foto
+            perfil.save(update_fields=["foto"])
         return Response(UserSerializer(user, context={"request": request}).data)
 
 

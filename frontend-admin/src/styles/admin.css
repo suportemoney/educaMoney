@@ -966,17 +966,107 @@ a {
   opacity: 0.6;
 }
 
-.conteudo-layout {
-  display: grid;
-  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.2fr);
-  gap: 1rem;
-  align-items: start;
+.conteudo-cascade {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
-@media (max-width: 960px) {
-  .conteudo-layout {
-    grid-template-columns: 1fr;
+.conteudo-cascade__step {
+  position: relative;
+  margin: 0 0 1rem;
+  padding: 1rem 1.1rem 1.1rem;
+  border: 1px solid var(--em-line);
+  border-radius: 0.65rem;
+  background: rgba(10, 22, 40, 0.45);
+}
+
+.conteudo-cascade__step--nested {
+  margin-left: 1.25rem;
+  border-left: 3px solid rgba(52, 211, 153, 0.45);
+}
+
+.conteudo-cascade__step--deep {
+  margin-left: 2.5rem;
+  border-left-color: rgba(126, 200, 255, 0.5);
+}
+
+.conteudo-cascade__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.conteudo-cascade__head h2,
+.conteudo-cascade__head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.conteudo-cascade__head .btn {
+  margin-left: auto;
+}
+
+.conteudo-cascade__n {
+  flex: 0 0 auto;
+  width: 1.75rem;
+  height: 1.75rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(52, 211, 153, 0.5);
+  color: var(--em-green);
+  font-size: 0.85rem;
+  font-weight: 700;
+  background: rgba(5, 8, 15, 0.6);
+}
+
+.conteudo-cascade__hint {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  color: var(--em-muted);
+}
+
+.conteudo-cascade__aula-body {
+  display: grid;
+  gap: 1rem;
+}
+
+.conteudo-cascade__child {
+  padding: 0.75rem 0.85rem;
+  border: 1px dashed var(--em-line);
+  border-radius: 0.5rem;
+  background: rgba(5, 8, 15, 0.35);
+}
+
+.conteudo-cascade__child .page-head {
+  margin-bottom: 0.65rem;
+}
+
+.conteudo-cascade__placeholder {
+  margin: 0 0 1rem 1.25rem;
+  padding: 0.85rem 1rem;
+  border: 1px dashed var(--em-line);
+  border-radius: 0.5rem;
+  color: var(--em-muted);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 720px) {
+  .conteudo-cascade__step--nested,
+  .conteudo-cascade__step--deep {
+    margin-left: 0.5rem;
   }
+}
+
+/* legado (evita quebrar se ainda referenciado) */
+.conteudo-layout {
+  display: block;
 }
 
 .conteudo-panel {

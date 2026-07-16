@@ -476,69 +476,151 @@ export function CursoConteudoPage() {
         </button>
       </div>
       <p className="page-lead">
-        Selecione módulo e aula à esquerda. Materiais e quiz ficam à direita. Vídeo até
-        500&nbsp;MB; materiais até 50&nbsp;MB.
+        Cascata: Curso → Módulo → Aula → Materiais → Prova. Clique na linha para descer um
+        nível. Vídeo até 500&nbsp;MB; materiais até 50&nbsp;MB.
       </p>
       {erro && <p className="form-erro">{erro}</p>}
 
-      <div className="conteudo-layout">
-        <div className="conteudo-layout__left">
-          <section className="conteudo-panel">
-            <div className="page-head">
+      <ol className="conteudo-cascade">
+        <li className="conteudo-cascade__step">
+          <header className="conteudo-cascade__head">
+            <span className="conteudo-cascade__n">1</span>
+            <div>
               <h2>Módulos</h2>
+              <p className="conteudo-cascade__hint">do curso {curso?.titulo || "…"}</p>
             </div>
+          </header>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Módulo</th>
+                  <th>Ord.</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {modulos.map((m) => (
+                  <tr
+                    key={m.id}
+                    className={moduloSel === m.id ? "row-selected" : undefined}
+                    onClick={() => selecionarModulo(m.id)}
+                  >
+                    <td>{m.titulo}</td>
+                    <td>{m.ordem}</td>
+                    <td>
+                      <span className={`badge ${m.ativo ? "badge--ok" : "badge--off"}`}>
+                        {m.ativo ? "Ativo" : "Off"}
+                      </span>
+                    </td>
+                    <td className="td-actions" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--small"
+                        onClick={() => abrirEditarModulo(m)}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--small"
+                        onClick={() => excluirModulo(m)}
+                      >
+                        Excluir
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {modulos.length === 0 && (
+                  <tr>
+                    <td colSpan={4}>
+                      Nenhum módulo.{" "}
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--small"
+                        onClick={abrirNovoModulo}
+                      >
+                        Novo módulo
+                      </button>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </li>
+
+        {moduloSel != null && (
+          <li className="conteudo-cascade__step conteudo-cascade__step--nested">
+            <header className="conteudo-cascade__head">
+              <span className="conteudo-cascade__n">2</span>
+              <div>
+                <h2>Aulas</h2>
+                <p className="conteudo-cascade__hint">
+                  do módulo <strong>{moduloAtual?.titulo}</strong>
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn--primary btn--small"
+                onClick={abrirNovaAula}
+              >
+                Nova aula
+              </button>
+            </header>
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Módulo</th>
-                    <th>Ord.</th>
+                    <th>Título</th>
+                    <th>Vídeo</th>
                     <th>Status</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {modulos.map((m) => (
+                  {aulas.map((a) => (
                     <tr
-                      key={m.id}
-                      className={moduloSel === m.id ? "row-selected" : undefined}
-                      onClick={() => selecionarModulo(m.id)}
+                      key={a.id}
+                      className={aulaSel === a.id ? "row-selected" : undefined}
+                      onClick={() => selecionarAula(a.id)}
                     >
-                      <td>{m.titulo}</td>
-                      <td>{m.ordem}</td>
+                      <td>{a.titulo}</td>
+                      <td>{a.video_url ? "Sim" : "—"}</td>
                       <td>
-                        <span className={`badge ${m.ativo ? "badge--ok" : "badge--off"}`}>
-                          {m.ativo ? "Ativo" : "Off"}
+                        <span className={`badge ${a.ativo ? "badge--ok" : "badge--off"}`}>
+                          {a.ativo ? "Ativo" : "Off"}
                         </span>
                       </td>
                       <td className="td-actions" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
                           className="btn btn--ghost btn--small"
-                          onClick={() => abrirEditarModulo(m)}
+                          onClick={() => abrirEditarAula(a)}
                         >
                           Editar
                         </button>
                         <button
                           type="button"
                           className="btn btn--ghost btn--small"
-                          onClick={() => excluirModulo(m)}
+                          onClick={() => excluirAula(a)}
                         >
                           Excluir
                         </button>
                       </td>
                     </tr>
                   ))}
-                  {modulos.length === 0 && (
+                  {aulas.length === 0 && (
                     <tr>
                       <td colSpan={4}>
-                        Nenhum módulo.{" "}
+                        Nenhuma aula.{" "}
                         <button
                           type="button"
                           className="btn btn--ghost btn--small"
-                          onClick={abrirNovoModulo}
+                          onClick={abrirNovaAula}
                         >
-                          Novo módulo
+                          Nova aula
                         </button>
                       </td>
                     </tr>
@@ -546,93 +628,25 @@ export function CursoConteudoPage() {
                 </tbody>
               </table>
             </div>
-          </section>
+          </li>
+        )}
 
-          {moduloSel != null && (
-            <section className="conteudo-panel">
-              <div className="page-head">
-                <h2>Aulas</h2>
-                <button
-                  type="button"
-                  className="btn btn--primary btn--small"
-                  onClick={abrirNovaAula}
-                >
-                  Nova aula
-                </button>
+        {aulaSel != null && (
+          <li className="conteudo-cascade__step conteudo-cascade__step--nested conteudo-cascade__step--deep">
+            <header className="conteudo-cascade__head">
+              <span className="conteudo-cascade__n">3</span>
+              <div>
+                <h2>Aula: {aulaAtual?.titulo}</h2>
+                <p className="conteudo-cascade__hint">
+                  Materiais e prova desta aula
+                </p>
               </div>
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Título</th>
-                      <th>Vídeo</th>
-                      <th>Status</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {aulas.map((a) => (
-                      <tr
-                        key={a.id}
-                        className={aulaSel === a.id ? "row-selected" : undefined}
-                        onClick={() => selecionarAula(a.id)}
-                      >
-                        <td>{a.titulo}</td>
-                        <td>{a.video_url ? "Sim" : "—"}</td>
-                        <td>
-                          <span className={`badge ${a.ativo ? "badge--ok" : "badge--off"}`}>
-                            {a.ativo ? "Ativo" : "Off"}
-                          </span>
-                        </td>
-                        <td className="td-actions" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            className="btn btn--ghost btn--small"
-                            onClick={() => abrirEditarAula(a)}
-                          >
-                            Editar
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn--ghost btn--small"
-                            onClick={() => excluirAula(a)}
-                          >
-                            Excluir
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {aulas.length === 0 && (
-                      <tr>
-                        <td colSpan={4}>
-                          Nenhuma aula.{" "}
-                          <button
-                            type="button"
-                            className="btn btn--ghost btn--small"
-                            onClick={abrirNovaAula}
-                          >
-                            Nova aula
-                          </button>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
-        </div>
+            </header>
 
-        <div className="conteudo-layout__right">
-          {aulaSel == null ? (
-            <div className="placeholder-box">
-              Selecione uma aula para gerenciar materiais e quiz.
-            </div>
-          ) : (
-            <>
-              <section className="conteudo-panel">
+            <div className="conteudo-cascade__aula-body">
+              <section className="conteudo-cascade__child">
                 <div className="page-head">
-                  <h2>Materiais</h2>
+                  <h3>Materiais</h3>
                   <button
                     type="button"
                     className="btn btn--primary btn--small"
@@ -710,9 +724,9 @@ export function CursoConteudoPage() {
                 </div>
               </section>
 
-              <section className="conteudo-panel">
+              <section className="conteudo-cascade__child">
                 <div className="page-head">
-                  <h2>Quiz</h2>
+                  <h3>Prova e atividades</h3>
                   <div style={{ display: "flex", gap: "0.5rem" }}>
                     <button
                       type="button"
@@ -731,7 +745,7 @@ export function CursoConteudoPage() {
                         setModalQuiz(true);
                       }}
                     >
-                      {quiz ? "Editar quiz" : "Novo quiz"}
+                      {quiz ? "Editar prova" : "Nova prova"}
                     </button>
                     {quiz && (
                       <button
@@ -744,7 +758,7 @@ export function CursoConteudoPage() {
                     )}
                   </div>
                 </div>
-                {!quiz && <p className="page-lead">Nenhum quiz ativo nesta aula.</p>}
+                {!quiz && <p className="page-lead">Nenhuma prova ativa nesta aula.</p>}
                 {quiz && (
                   <>
                     <p className="page-lead">
@@ -866,10 +880,16 @@ export function CursoConteudoPage() {
                   </>
                 )}
               </section>
-            </>
-          )}
-        </div>
-      </div>
+            </div>
+          </li>
+        )}
+
+        {moduloSel != null && aulaSel == null && aulas.length > 0 && (
+          <li className="conteudo-cascade__placeholder">
+            Selecione uma aula acima para ver materiais e prova.
+          </li>
+        )}
+      </ol>
 
       <Modal
         aberto={modalModulo}

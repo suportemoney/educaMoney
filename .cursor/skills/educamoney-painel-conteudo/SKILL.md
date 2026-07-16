@@ -21,7 +21,7 @@ Progresso do aluno: `ProgressoAula` (não editado no painel nesta fase).
 Regra `.cursor/rules/painel-crud.mdc`: tabela + modal Novo/Editar + Excluir.
 
 - Lista cursos: filtros `q`/`ativo`/`subcategoria_id`; ação **Conteúdo** → `/painel/cursos/:id/conteudo`
-- Página conteúdo: layout 2 colunas; breadcrumb; URL `?modulo=&aula=`
+- Página conteúdo: **cascata** Curso → Módulo → Aula → Materiais → Prova; breadcrumb; URL `?modulo=&aula=`
 - Soft-delete: DELETE módulo/aula/material/quiz → `ativo=false` (listas default só ativos)
 - Quiz soft-deletado: POST na mesma aula **reativa** em vez de 400
 - Aulas/materiais: modal com `FormData` via `apiFormData`

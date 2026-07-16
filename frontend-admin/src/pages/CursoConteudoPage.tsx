@@ -505,9 +505,12 @@ export function CursoConteudoPage() {
   }
 
   function renderQuizPerguntas(q: QuizAdmin) {
+    const avisos = q === prova ? quizAvisos.prova : quizAvisos.atividade;
+    const perguntas = q.perguntas || [];
+
     return (
-      <>
-        {(q === prova ? quizAvisos.prova : quizAvisos.atividade).map((a) => (
+      <div className="quiz-perguntas">
+        {avisos.map((a) => (
           <p key={a} className="form-erro">
             {a}
           </p>
@@ -522,7 +525,7 @@ export function CursoConteudoPage() {
               setEditPerg(null);
               setFormPerg({
                 enunciado: "",
-                ordem: proximaOrdem(q.perguntas || []),
+                ordem: proximaOrdem(perguntas),
               });
               setModalPerg(true);
             }}
@@ -530,71 +533,22 @@ export function CursoConteudoPage() {
             Nova pergunta
           </button>
         </div>
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Enunciado</th>
-                <th>Alternativas</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {(q.perguntas || []).map((p) => (
-                <tr key={p.id}>
-                  <td>{p.enunciado}</td>
-                  <td>
-                    <ul className="alt-list">
-                      {(p.alternativas || []).map((a) => (
-                        <li key={a.id}>
-                          {a.texto}{" "}
-                          {a.correta && <span className="badge badge--ok">correta</span>}{" "}
-                          <button
-                            type="button"
-                            className="btn btn--ghost btn--small"
-                            onClick={() => {
-                              setPergQuizId(q.id);
-                              setPergAltId(p.id);
-                              setEditAlt(a);
-                              setFormAlt({
-                                texto: a.texto,
-                                correta: a.correta,
-                                ordem: a.ordem,
-                              });
-                              setModalAlt(true);
-                            }}
-                          >
-                            Editar
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn--ghost btn--small"
-                            onClick={() => excluirAlt(a.id, q.id)}
-                          >
-                            ×
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--small"
-                      onClick={() => {
-                        setPergQuizId(q.id);
-                        setPergAltId(p.id);
-                        setEditAlt(null);
-                        setFormAlt({
-                          texto: "",
-                          correta: false,
-                          ordem: proximaOrdem(p.alternativas || []),
-                        });
-                        setModalAlt(true);
-                      }}
-                    >
-                      + Alternativa
-                    </button>
-                  </td>
-                  <td className="td-actions">
+
+        {perguntas.length === 0 && (
+          <p className="quiz-perguntas__empty">Nenhuma pergunta ainda.</p>
+        )}
+
+        <ul className="quiz-perguntas__list">
+          {perguntas.map((p, idx) => {
+            const alts = [...(p.alternativas || [])].sort(
+              (a, b) => a.ordem - b.ordem || a.id - b.id
+            );
+            return (
+              <li key={p.id} className="quiz-perg">
+                <header className="quiz-perg__head">
+                  <span className="quiz-perg__n">{idx + 1}</span>
+                  <p className="quiz-perg__enunciado">{p.enunciado}</p>
+                  <div className="quiz-perg__actions">
                     <button
                       type="button"
                       className="btn btn--ghost btn--small"
@@ -614,18 +568,76 @@ export function CursoConteudoPage() {
                     >
                       Excluir
                     </button>
-                  </td>
-                </tr>
-              ))}
-              {(q.perguntas || []).length === 0 && (
-                <tr>
-                  <td colSpan={3}>Nenhuma pergunta.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </>
+                  </div>
+                </header>
+
+                <ul className="quiz-alts">
+                  {alts.map((a, ai) => (
+                    <li
+                      key={a.id}
+                      className={`quiz-alt${a.correta ? " quiz-alt--ok" : ""}`}
+                    >
+                      <span className="quiz-alt__letra" aria-hidden>
+                        {String.fromCharCode(65 + ai)}
+                      </span>
+                      <span className="quiz-alt__texto">{a.texto}</span>
+                      {a.correta && (
+                        <span className="badge badge--ok quiz-alt__badge">correta</span>
+                      )}
+                      <div className="quiz-alt__actions">
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--small"
+                          title="Editar alternativa"
+                          onClick={() => {
+                            setPergQuizId(q.id);
+                            setPergAltId(p.id);
+                            setEditAlt(a);
+                            setFormAlt({
+                              texto: a.texto,
+                              correta: a.correta,
+                              ordem: a.ordem,
+                            });
+                            setModalAlt(true);
+                          }}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--small"
+                          title="Excluir alternativa"
+                          onClick={() => excluirAlt(a.id, q.id)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--small quiz-perg__add-alt"
+                  onClick={() => {
+                    setPergQuizId(q.id);
+                    setPergAltId(p.id);
+                    setEditAlt(null);
+                    setFormAlt({
+                      texto: "",
+                      correta: false,
+                      ordem: proximaOrdem(alts),
+                    });
+                    setModalAlt(true);
+                  }}
+                >
+                  + Alternativa
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
     );
   }
 

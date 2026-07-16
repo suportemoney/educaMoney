@@ -33,6 +33,8 @@ frontend/dist/
 .cursor/*
 !.cursor/rules/
 !.cursor/rules/**
+!.cursor/skills/
+!.cursor/skills/**
 *.swp
 .DS_Store
 Thumbs.db
@@ -42,3 +44,6 @@ Thumbs.db
 
 # Uploads Django
 backend/media/
+
+# Backups locais (P16)
+backups/

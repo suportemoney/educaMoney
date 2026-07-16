@@ -79,7 +79,7 @@ export function RegisterPage() {
         password,
         password_confirm: passwordConfirm,
       });
-      navigate("/ativar", { replace: true });
+      navigate("/", { replace: true });
     } catch (err) {
       if (err instanceof ApiError) {
         setErro(extractErrorMessage(err.data));
@@ -106,8 +106,8 @@ export function RegisterPage() {
             <span className="register-headline__accent"> da liberdade financeira.</span>
           </h1>
           <p className="register-lead animate-fade-up animate-delay-2">
-            Cadastre-se uma vez. Ative o plano com o token. Acompanhe os cursos no seu ritmo —
-            sem checkout no site, com a mesma energia da marca.
+            Cadastre-se uma vez, receba seu RA e entre no portal do aluno para
+            ativar o token e acompanhar os cursos.
           </p>
 
           <ol className="register-steps animate-fade-up animate-delay-3">
@@ -126,7 +126,7 @@ export function RegisterPage() {
         <section className="register-form-panel animate-fade-up animate-delay-2" aria-label="Formulário de cadastro">
           <div className="register-form-panel__head">
             <h2>Criar conta</h2>
-            <p>Depois do cadastro você já pode ativar o token-key.</p>
+            <p>Depois do cadastro, use o menu do seu nome para abrir o portal.</p>
           </div>
 
           <form className="auth-form" onSubmit={onSubmit}>

@@ -8,6 +8,19 @@ class Plano(models.Model):
     preco_referencia = models.DecimalField(
         "preço referência", max_digits=10, decimal_places=2
     )
+    # Lista de benefícios exibida nos cards da landing / painel
+    beneficios = models.JSONField(
+        "benefícios",
+        default=list,
+        blank=True,
+        help_text="Lista de strings: o que o cliente recebe neste plano.",
+    )
+    # Dias de validade ao ativar o plano via token
+    duracao_dias = models.PositiveIntegerField(
+        "duração (dias)",
+        default=365,
+        help_text="Usado para calcular valido_ate na ativação.",
+    )
     ativo = models.BooleanField("ativo", default=True)
     ordem = models.PositiveIntegerField("ordem", default=0)
 
@@ -25,6 +38,35 @@ class Curso(models.Model):
     descricao = models.TextField("descrição")
     ativo = models.BooleanField("ativo", default=True)
     ordem = models.PositiveIntegerField("ordem", default=0)
+    icone = models.FileField(
+        "ícone",
+        upload_to="icones/",
+        blank=True,
+        null=True,
+        help_text="Ícone do curso (png/webp/svg).",
+    )
+    capa = models.ImageField(
+        "capa",
+        upload_to="capas/",
+        blank=True,
+        null=True,
+        help_text="Imagem de capa do curso (jpg/png/webp).",
+    )
+    icone_key = models.CharField(
+        "chave do ícone",
+        max_length=40,
+        blank=True,
+        default="",
+        help_text="Fallback sem arquivo, ex.: wallet, chart, shield.",
+    )
+    subcategoria = models.ForeignKey(
+        "Subcategoria",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cursos",
+        verbose_name="subcategoria",
+    )
     instrutor = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -49,6 +91,100 @@ class Curso(models.Model):
 
     def __str__(self):
         return self.titulo
+
+
+class Categoria(models.Model):
+    titulo = models.CharField("título", max_length=120)
+    slug = models.SlugField("slug", max_length=140, unique=True)
+    ordem = models.PositiveIntegerField("ordem", default=0)
+    ativo = models.BooleanField("ativo", default=True)
+    icone = models.FileField(
+        "ícone", upload_to="icones/", blank=True, null=True
+    )
+    icone_key = models.CharField("chave do ícone", max_length=40, blank=True, default="")
+
+    class Meta:
+        ordering = ["ordem", "titulo"]
+        verbose_name = "categoria"
+        verbose_name_plural = "categorias"
+
+    def __str__(self):
+        return self.titulo
+
+
+class Subcategoria(models.Model):
+    categoria = models.ForeignKey(
+        Categoria,
+        on_delete=models.CASCADE,
+        related_name="subcategorias",
+        verbose_name="categoria",
+    )
+    titulo = models.CharField("título", max_length=120)
+    slug = models.SlugField("slug", max_length=140)
+    ordem = models.PositiveIntegerField("ordem", default=0)
+    ativo = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        ordering = ["ordem", "titulo"]
+        verbose_name = "subcategoria"
+        verbose_name_plural = "subcategorias"
+        unique_together = ("categoria", "slug")
+
+    def __str__(self):
+        return f"{self.categoria} / {self.titulo}"
+
+
+class Conjunto(models.Model):
+    """Trilha/curadoria — não libera acesso sozinho (Plano continua sendo o gate)."""
+
+    titulo = models.CharField("título", max_length=160)
+    descricao = models.TextField("descrição", blank=True, default="")
+    categoria = models.ForeignKey(
+        Categoria,
+        on_delete=models.PROTECT,
+        related_name="conjuntos",
+        verbose_name="categoria",
+    )
+    icone = models.FileField(
+        "ícone", upload_to="icones/", blank=True, null=True
+    )
+    icone_key = models.CharField("chave do ícone", max_length=40, blank=True, default="")
+    ordem = models.PositiveIntegerField("ordem", default=0)
+    ativo = models.BooleanField("ativo", default=True)
+    cursos = models.ManyToManyField(
+        Curso,
+        through="ConjuntoCurso",
+        related_name="conjuntos",
+        blank=True,
+        verbose_name="cursos",
+    )
+
+    class Meta:
+        ordering = ["ordem", "titulo"]
+        verbose_name = "conjunto"
+        verbose_name_plural = "conjuntos"
+
+    def __str__(self):
+        return self.titulo
+
+
+class ConjuntoCurso(models.Model):
+    conjunto = models.ForeignKey(
+        Conjunto, on_delete=models.CASCADE, related_name="conjunto_cursos"
+    )
+    curso = models.ForeignKey(
+        Curso, on_delete=models.CASCADE, related_name="curso_conjuntos"
+    )
+    ordem = models.PositiveIntegerField("ordem", default=0)
+
+    class Meta:
+        ordering = ["ordem", "id"]
+        verbose_name = "conjunto-curso"
+        verbose_name_plural = "conjuntos-cursos"
+        unique_together = ("conjunto", "curso")
+
+    def __str__(self):
+        return f"{self.conjunto} ↔ {self.curso}"
 
 
 class PlanoCurso(models.Model):
@@ -188,6 +324,13 @@ class Ativacao(models.Model):
     )
     data_ativacao = models.DateTimeField(auto_now_add=True)
     ativo = models.BooleanField(default=True)
+    valido_ate = models.DateTimeField(
+        "válido até",
+        null=True,
+        blank=True,
+        help_text="Vazio = sem prazo de expiração.",
+    )
+    renovado_em = models.DateTimeField("renovado em", null=True, blank=True)
 
     class Meta:
         ordering = ["-data_ativacao"]
@@ -196,3 +339,278 @@ class Ativacao(models.Model):
 
     def __str__(self):
         return f"{self.usuario} → {self.plano}"
+
+
+class TicketSecretaria(models.Model):
+    class Status(models.TextChoices):
+        ABERTO = "aberto", "Aberto"
+        EM_ANDAMENTO = "em_andamento", "Em andamento"
+        FECHADO = "fechado", "Fechado"
+
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="tickets_secretaria",
+        verbose_name="aluno",
+    )
+    assunto = models.CharField("assunto", max_length=160)
+    mensagem = models.TextField("mensagem")
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.ABERTO
+    )
+    resposta = models.TextField("resposta", blank=True, default="")
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-criado_em"]
+        verbose_name = "ticket de secretaria"
+        verbose_name_plural = "tickets de secretaria"
+
+    def __str__(self):
+        return f"{self.assunto} ({self.status})"
+
+
+class Modulo(models.Model):
+    curso = models.ForeignKey(
+        Curso, on_delete=models.CASCADE, related_name="modulos", verbose_name="curso"
+    )
+    titulo = models.CharField("título", max_length=160)
+    ordem = models.PositiveIntegerField("ordem", default=0)
+    ativo = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        ordering = ["ordem", "id"]
+        verbose_name = "módulo"
+        verbose_name_plural = "módulos"
+
+    def __str__(self):
+        return f"{self.curso}: {self.titulo}"
+
+
+class Aula(models.Model):
+    modulo = models.ForeignKey(
+        Modulo, on_delete=models.CASCADE, related_name="aulas", verbose_name="módulo"
+    )
+    titulo = models.CharField("título", max_length=160)
+    descricao = models.TextField("descrição", blank=True, default="")
+    video = models.FileField(
+        "vídeo",
+        upload_to="aulas/",
+        blank=True,
+        null=True,
+        help_text="Arquivo mp4 ou webm.",
+    )
+    duracao_segundos = models.PositiveIntegerField(
+        "duração (segundos)", null=True, blank=True
+    )
+    ordem = models.PositiveIntegerField("ordem", default=0)
+    ativo = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        ordering = ["ordem", "id"]
+        verbose_name = "aula"
+        verbose_name_plural = "aulas"
+
+    def __str__(self):
+        return self.titulo
+
+
+class ProgressoAula(models.Model):
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="progressos_aula",
+        verbose_name="usuário",
+    )
+    aula = models.ForeignKey(
+        Aula,
+        on_delete=models.CASCADE,
+        related_name="progressos",
+        verbose_name="aula",
+    )
+    concluida = models.BooleanField("concluída", default=False)
+    posicao_segundos = models.PositiveIntegerField("posição (segundos)", default=0)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-atualizado_em"]
+        verbose_name = "progresso de aula"
+        verbose_name_plural = "progressos de aula"
+        unique_together = ("usuario", "aula")
+
+    def __str__(self):
+        return f"{self.usuario} → {self.aula}"
+
+
+class MaterialAula(models.Model):
+    """PDF, imagem ou zip de apoio vinculado à aula."""
+
+    aula = models.ForeignKey(
+        Aula,
+        on_delete=models.CASCADE,
+        related_name="materiais",
+        verbose_name="aula",
+    )
+    titulo = models.CharField("título", max_length=160)
+    arquivo = models.FileField("arquivo", upload_to="materiais/")
+    ordem = models.PositiveIntegerField("ordem", default=0)
+    ativo = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        ordering = ["ordem", "id"]
+        verbose_name = "material de aula"
+        verbose_name_plural = "materiais de aula"
+
+    def __str__(self):
+        return self.titulo
+
+
+class Quiz(models.Model):
+    """Avaliação objetiva ligada a uma aula (1:1)."""
+
+    aula = models.OneToOneField(
+        Aula,
+        on_delete=models.CASCADE,
+        related_name="quiz",
+        verbose_name="aula",
+    )
+    titulo = models.CharField("título", max_length=160)
+    nota_minima = models.PositiveIntegerField(
+        "nota mínima (%)",
+        default=70,
+        help_text="Percentual mínimo para aprovação (0–100).",
+    )
+    bloqueia_proxima = models.BooleanField(
+        "bloqueia próxima aula",
+        default=False,
+        help_text="Se ativo, exige aprovação para avançar.",
+    )
+    ativo = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        verbose_name = "quiz"
+        verbose_name_plural = "quizzes"
+
+    def __str__(self):
+        return f"{self.aula}: {self.titulo}"
+
+
+class Pergunta(models.Model):
+    quiz = models.ForeignKey(
+        Quiz, on_delete=models.CASCADE, related_name="perguntas", verbose_name="quiz"
+    )
+    enunciado = models.TextField("enunciado")
+    ordem = models.PositiveIntegerField("ordem", default=0)
+
+    class Meta:
+        ordering = ["ordem", "id"]
+        verbose_name = "pergunta"
+        verbose_name_plural = "perguntas"
+
+    def __str__(self):
+        return self.enunciado[:60]
+
+
+class Alternativa(models.Model):
+    pergunta = models.ForeignKey(
+        Pergunta,
+        on_delete=models.CASCADE,
+        related_name="alternativas",
+        verbose_name="pergunta",
+    )
+    texto = models.CharField("texto", max_length=400)
+    correta = models.BooleanField("correta", default=False)
+    ordem = models.PositiveIntegerField("ordem", default=0)
+
+    class Meta:
+        ordering = ["ordem", "id"]
+        verbose_name = "alternativa"
+        verbose_name_plural = "alternativas"
+
+    def __str__(self):
+        return self.texto[:60]
+
+
+class TentativaQuiz(models.Model):
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="tentativas_quiz",
+        verbose_name="usuário",
+    )
+    quiz = models.ForeignKey(
+        Quiz,
+        on_delete=models.CASCADE,
+        related_name="tentativas",
+        verbose_name="quiz",
+    )
+    nota = models.PositiveIntegerField("nota (%)", default=0)
+    aprovado = models.BooleanField("aprovado", default=False)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-criado_em"]
+        verbose_name = "tentativa de quiz"
+        verbose_name_plural = "tentativas de quiz"
+
+    def __str__(self):
+        return f"{self.usuario} → {self.quiz} ({self.nota}%)"
+
+
+class RespostaAluno(models.Model):
+    tentativa = models.ForeignKey(
+        TentativaQuiz,
+        on_delete=models.CASCADE,
+        related_name="respostas",
+        verbose_name="tentativa",
+    )
+    pergunta = models.ForeignKey(
+        Pergunta,
+        on_delete=models.CASCADE,
+        related_name="respostas_aluno",
+        verbose_name="pergunta",
+    )
+    alternativa = models.ForeignKey(
+        Alternativa,
+        on_delete=models.CASCADE,
+        related_name="respostas_aluno",
+        verbose_name="alternativa",
+    )
+
+    class Meta:
+        verbose_name = "resposta do aluno"
+        verbose_name_plural = "respostas do aluno"
+        unique_together = ("tentativa", "pergunta")
+
+    def __str__(self):
+        return f"{self.tentativa_id}:{self.pergunta_id}"
+
+
+class Certificado(models.Model):
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="certificados",
+        verbose_name="aluno",
+    )
+    curso = models.ForeignKey(
+        Curso,
+        on_delete=models.PROTECT,
+        related_name="certificados",
+        verbose_name="curso",
+    )
+    codigo = models.CharField("código", max_length=32, unique=True)
+    emitido_em = models.DateTimeField(auto_now_add=True)
+    revogado = models.BooleanField("revogado", default=False)
+    # HTML imprimível (sem dependência de PDF)
+    html = models.TextField("html", blank=True, default="")
+
+    class Meta:
+        ordering = ["-emitido_em"]
+        verbose_name = "certificado"
+        verbose_name_plural = "certificados"
+        unique_together = ("usuario", "curso")
+
+    def __str__(self):
+        return self.codigo

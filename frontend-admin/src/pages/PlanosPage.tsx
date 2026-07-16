@@ -3,10 +3,23 @@ import { apiRequest, type Plano } from "../api/client";
 import { Modal } from "../components/Modal";
 import { useAuth } from "../context/AuthContext";
 
+function beneficiosParaTexto(lista: string[] | undefined): string {
+  return (lista || []).join("\n");
+}
+
+function textoParaBeneficios(texto: string): string[] {
+  return texto
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+}
+
 const vazio = {
   nome: "",
   descricao: "",
   preco_referencia: "0.00",
+  beneficiosTexto: "",
+  duracao_dias: 365,
   ativo: true,
   ordem: 0,
 };
@@ -42,6 +55,8 @@ export function PlanosPage() {
       nome: p.nome,
       descricao: p.descricao,
       preco_referencia: p.preco_referencia,
+      beneficiosTexto: beneficiosParaTexto(p.beneficios),
+      duracao_dias: p.duracao_dias ?? 365,
       ativo: p.ativo,
       ordem: p.ordem,
     });
@@ -53,18 +68,27 @@ export function PlanosPage() {
     if (!access) return;
     setSalvando(true);
     setErro(null);
+    const body = {
+      nome: form.nome,
+      descricao: form.descricao,
+      preco_referencia: form.preco_referencia,
+      beneficios: textoParaBeneficios(form.beneficiosTexto),
+      duracao_dias: form.duracao_dias,
+      ativo: form.ativo,
+      ordem: form.ordem,
+    };
     try {
       if (editando) {
         await apiRequest(`/admin/planos/${editando.id}/`, {
           method: "PATCH",
           token: access,
-          body: form,
+          body,
         });
       } else {
         await apiRequest("/admin/planos/", {
           method: "POST",
           token: access,
-          body: form,
+          body,
         });
       }
       setModalAberto(false);
@@ -96,7 +120,7 @@ export function PlanosPage() {
         </button>
       </div>
       <p className="page-lead">
-        Planos ativos aparecem na landing pública automaticamente.
+        Título, preço e benefícios do card na landing (uma linha por item).
       </p>
       {erro && <p className="form-erro">{erro}</p>}
       <div className="table-wrap">
@@ -105,6 +129,8 @@ export function PlanosPage() {
             <tr>
               <th>Nome</th>
               <th>Preço</th>
+              <th>Dias</th>
+              <th>Benefícios</th>
               <th>Ordem</th>
               <th>Ativo</th>
               <th></th>
@@ -115,6 +141,8 @@ export function PlanosPage() {
               <tr key={p.id}>
                 <td>{p.nome}</td>
                 <td>{p.preco_referencia}</td>
+                <td>{p.duracao_dias ?? 365}</td>
+                <td>{(p.beneficios || []).length}</td>
                 <td>{p.ordem}</td>
                 <td>{p.ativo ? "Sim" : "Não"}</td>
                 <td className="td-actions">
@@ -140,7 +168,7 @@ export function PlanosPage() {
       >
         <form className="form-grid" onSubmit={salvar}>
           <label>
-            Nome
+            Nome (título do card)
             <input
               value={form.nome}
               onChange={(e) => setForm({ ...form, nome: e.target.value })}
@@ -148,12 +176,22 @@ export function PlanosPage() {
             />
           </label>
           <label>
-            Descrição
+            Descrição curta
             <textarea
               value={form.descricao}
               onChange={(e) => setForm({ ...form, descricao: e.target.value })}
               required
-              rows={3}
+              rows={2}
+            />
+          </label>
+          <label>
+            Benefícios (um por linha)
+            <textarea
+              value={form.beneficiosTexto}
+              onChange={(e) => setForm({ ...form, beneficiosTexto: e.target.value })}
+              rows={7}
+              placeholder={"Tudo do plano anterior\nAcesso aos cursos X\nSuporte prioritário"}
+              required
             />
           </label>
           <label>
@@ -161,6 +199,18 @@ export function PlanosPage() {
             <input
               value={form.preco_referencia}
               onChange={(e) => setForm({ ...form, preco_referencia: e.target.value })}
+              required
+            />
+          </label>
+          <label>
+            Duração (dias de validade)
+            <input
+              type="number"
+              min={1}
+              value={form.duracao_dias}
+              onChange={(e) =>
+                setForm({ ...form, duracao_dias: Number(e.target.value) || 365 })
+              }
               required
             />
           </label>

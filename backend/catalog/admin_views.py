@@ -2,7 +2,9 @@ import secrets
 import string
 
 from django.contrib.auth.models import User
+from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -14,10 +16,12 @@ from accounts.permissions import (
     IsPainelUser,
 )
 
-from .models import Curso, Integracao, Plano, TokenKey
+from .models import Aula, Curso, Integracao, Modulo, Plano, TokenKey
 from .serializers import (
+    AulaAdminSerializer,
     CursoAdminSerializer,
     IntegracaoSerializer,
+    ModuloAdminSerializer,
     PlanoAdminSerializer,
     TokenKeyCreateSerializer,
     TokenKeySerializer,
@@ -44,13 +48,19 @@ class AdminPlanoDetailView(generics.RetrieveUpdateAPIView):
 class AdminCursoListCreateView(generics.ListCreateAPIView):
     serializer_class = CursoAdminSerializer
     permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
-    queryset = Curso.objects.select_related("instrutor").prefetch_related("planos")
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    queryset = Curso.objects.select_related(
+        "instrutor", "subcategoria", "subcategoria__categoria"
+    ).prefetch_related("planos")
 
 
 class AdminCursoDetailView(generics.RetrieveUpdateAPIView):
     serializer_class = CursoAdminSerializer
     permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
-    queryset = Curso.objects.select_related("instrutor").prefetch_related("planos")
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    queryset = Curso.objects.select_related(
+        "instrutor", "subcategoria", "subcategoria__categoria"
+    ).prefetch_related("planos")
 
 
 class AdminIntegracaoListCreateView(generics.ListCreateAPIView):
@@ -115,6 +125,83 @@ class AdminInstrutorListView(APIView):
             "first_name", "username"
         )
         return Response(UserSerializer(qs, many=True, context={"request": request}).data)
+
+
+class AdminModuloListCreateView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+
+    def get(self, request, curso_id):
+        curso = get_object_or_404(Curso, pk=curso_id)
+        qs = Modulo.objects.filter(curso=curso).order_by("ordem", "id")
+        return Response(ModuloAdminSerializer(qs, many=True).data)
+
+    def post(self, request, curso_id):
+        curso = get_object_or_404(Curso, pk=curso_id)
+        ser = ModuloAdminSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        modulo = Modulo.objects.create(curso=curso, **ser.validated_data)
+        return Response(
+            ModuloAdminSerializer(modulo).data, status=status.HTTP_201_CREATED
+        )
+
+
+class AdminModuloDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+
+    def patch(self, request, pk):
+        modulo = get_object_or_404(Modulo, pk=pk)
+        ser = ModuloAdminSerializer(modulo, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(ser.data)
+
+    def delete(self, request, pk):
+        modulo = get_object_or_404(Modulo, pk=pk)
+        modulo.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AdminAulaListCreateView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get(self, request, modulo_id):
+        modulo = get_object_or_404(Modulo, pk=modulo_id)
+        qs = Aula.objects.filter(modulo=modulo).order_by("ordem", "id")
+        return Response(
+            AulaAdminSerializer(qs, many=True, context={"request": request}).data
+        )
+
+    def post(self, request, modulo_id):
+        modulo = get_object_or_404(Modulo, pk=modulo_id)
+        ser = AulaAdminSerializer(data=request.data, context={"request": request})
+        ser.is_valid(raise_exception=True)
+        aula = Aula.objects.create(modulo=modulo, **ser.validated_data)
+        return Response(
+            AulaAdminSerializer(aula, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class AdminAulaDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def patch(self, request, pk):
+        aula = get_object_or_404(Aula, pk=pk)
+        ser = AulaAdminSerializer(
+            aula, data=request.data, partial=True, context={"request": request}
+        )
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(ser.data)
+
+    def delete(self, request, pk):
+        aula = get_object_or_404(Aula, pk=pk)
+        if aula.video:
+            aula.video.delete(save=False)
+        aula.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 def _gerar_codigo_token() -> str:

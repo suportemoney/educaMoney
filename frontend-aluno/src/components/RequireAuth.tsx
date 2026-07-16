@@ -6,16 +6,10 @@ export function RequireAuth() {
   const location = useLocation();
 
   if (loading) {
-    return (
-      <div className="page-shell">
-        <p className="auth-loading">Carregando sessão…</p>
-      </div>
-    );
+    return <p className="portal-loading">Carregando sessão…</p>;
   }
-
   if (!user) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
-
   return <Outlet />;
 }

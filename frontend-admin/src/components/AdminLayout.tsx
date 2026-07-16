@@ -7,10 +7,16 @@ type NavItem = { to: string; label: string; papeis: Papel[] };
 const NAV: NavItem[] = [
   { to: "/", label: "Dashboard", papeis: ["administrador", "gestor", "pr", "instrutor", "merchant"] },
   { to: "/usuarios", label: "Usuários", papeis: ["administrador", "gestor"] },
+  { to: "/alunos", label: "Alunos", papeis: ["administrador", "gestor"] },
   { to: "/planos", label: "Planos", papeis: ["administrador", "gestor"] },
   { to: "/integracao", label: "Integração", papeis: ["administrador", "gestor"] },
+  { to: "/categorias", label: "Categorias", papeis: ["administrador", "gestor", "pr"] },
+  { to: "/conjuntos", label: "Conjuntos", papeis: ["administrador", "gestor", "pr"] },
   { to: "/cursos", label: "Cursos", papeis: ["administrador", "gestor", "pr"] },
   { to: "/tokens", label: "Tokens", papeis: ["administrador", "gestor", "merchant"] },
+  { to: "/ativacoes", label: "Ativações", papeis: ["administrador", "gestor", "merchant"] },
+  { to: "/certificados", label: "Certificados", papeis: ["administrador", "gestor"] },
+  { to: "/secretaria", label: "Secretaria", papeis: ["administrador", "gestor"] },
 ];
 
 export function AdminLayout() {

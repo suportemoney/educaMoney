@@ -1,0 +1,846 @@
+import { useEffect, useState, type FormEvent } from "react";
+import { Link, useParams } from "react-router-dom";
+import {
+  apiFormData,
+  apiRequest,
+  type AulaAdmin,
+  type Curso,
+  type MaterialAula,
+  type Modulo,
+  type PerguntaAdmin,
+  type QuizAdmin,
+} from "../api/client";
+import { Modal } from "../components/Modal";
+import { useAuth } from "../context/AuthContext";
+
+const moduloVazio = { titulo: "", ordem: 0, ativo: true };
+const aulaVazia = {
+  titulo: "",
+  descricao: "",
+  ordem: 0,
+  ativo: true,
+  duracao_segundos: "" as string | number,
+  videoFile: null as File | null,
+};
+const matVazio = { titulo: "", ordem: 0, ativo: true, arquivo: null as File | null };
+const quizVazio = {
+  titulo: "Quiz da aula",
+  nota_minima: 70,
+  bloqueia_proxima: false,
+  ativo: true,
+};
+const perguntaVazia = { enunciado: "", ordem: 0 };
+const altVazia = { texto: "", correta: false, ordem: 0 };
+
+export function CursoConteudoPage() {
+  const { cursoId } = useParams<{ cursoId: string }>();
+  const { access } = useAuth();
+  const [curso, setCurso] = useState<Curso | null>(null);
+  const [modulos, setModulos] = useState<Modulo[]>([]);
+  const [moduloSel, setModuloSel] = useState<number | null>(null);
+  const [aulas, setAulas] = useState<AulaAdmin[]>([]);
+  const [aulaSel, setAulaSel] = useState<number | null>(null);
+  const [materiais, setMateriais] = useState<MaterialAula[]>([]);
+  const [quiz, setQuiz] = useState<QuizAdmin | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const [modalModulo, setModalModulo] = useState(false);
+  const [editModulo, setEditModulo] = useState<Modulo | null>(null);
+  const [formModulo, setFormModulo] = useState(moduloVazio);
+
+  const [modalAula, setModalAula] = useState(false);
+  const [editAula, setEditAula] = useState<AulaAdmin | null>(null);
+  const [formAula, setFormAula] = useState(aulaVazia);
+
+  const [modalMat, setModalMat] = useState(false);
+  const [editMat, setEditMat] = useState<MaterialAula | null>(null);
+  const [formMat, setFormMat] = useState(matVazio);
+
+  const [modalQuiz, setModalQuiz] = useState(false);
+  const [formQuiz, setFormQuiz] = useState(quizVazio);
+
+  const [modalPerg, setModalPerg] = useState(false);
+  const [editPerg, setEditPerg] = useState<PerguntaAdmin | null>(null);
+  const [formPerg, setFormPerg] = useState(perguntaVazia);
+
+  const [modalAlt, setModalAlt] = useState(false);
+  const [pergAltId, setPergAltId] = useState<number | null>(null);
+  const [formAlt, setFormAlt] = useState(altVazia);
+
+  const [salvando, setSalvando] = useState(false);
+
+  async function carregarCursoEModulos() {
+    if (!access || !cursoId) return;
+    const id = Number(cursoId);
+    const [c, m] = await Promise.all([
+      apiRequest<Curso>(`/admin/cursos/${id}/`, { token: access }),
+      apiRequest<Modulo[]>(`/admin/cursos/${id}/modulos/`, { token: access }),
+    ]);
+    setCurso(c);
+    setModulos(m);
+    if (m.length && (moduloSel === null || !m.some((x) => x.id === moduloSel))) {
+      setModuloSel(m[0].id);
+    }
+  }
+
+  async function carregarAulas(mid: number) {
+    if (!access) return;
+    const list = await apiRequest<AulaAdmin[]>(`/admin/modulos/${mid}/aulas/`, {
+      token: access,
+    });
+    setAulas(list);
+    if (list.length && (aulaSel === null || !list.some((x) => x.id === aulaSel))) {
+      setAulaSel(list[0].id);
+    }
+    if (!list.length) setAulaSel(null);
+  }
+
+  async function carregarAulaExtra(aid: number) {
+    if (!access) return;
+    const [mats, q] = await Promise.all([
+      apiRequest<MaterialAula[]>(`/admin/aulas/${aid}/materiais/`, { token: access }),
+      apiRequest<QuizAdmin | null>(`/admin/aulas/${aid}/quiz/`, { token: access }),
+    ]);
+    setMateriais(mats.filter((m) => m.ativo !== false));
+    setQuiz(q);
+  }
+
+  useEffect(() => {
+    carregarCursoEModulos().catch((e: Error) => setErro(e.message));
+  }, [access, cursoId]);
+
+  useEffect(() => {
+    if (moduloSel == null) {
+      setAulas([]);
+      setAulaSel(null);
+      return;
+    }
+    carregarAulas(moduloSel).catch((e: Error) => setErro(e.message));
+  }, [access, moduloSel]);
+
+  useEffect(() => {
+    if (aulaSel == null) {
+      setMateriais([]);
+      setQuiz(null);
+      return;
+    }
+    carregarAulaExtra(aulaSel).catch((e: Error) => setErro(e.message));
+  }, [access, aulaSel]);
+
+  function abrirNovoModulo() {
+    setEditModulo(null);
+    setFormModulo(moduloVazio);
+    setModalModulo(true);
+  }
+
+  function abrirEditarModulo(m: Modulo) {
+    setEditModulo(m);
+    setFormModulo({ titulo: m.titulo, ordem: m.ordem, ativo: m.ativo });
+    setModalModulo(true);
+  }
+
+  async function salvarModulo(e: FormEvent) {
+    e.preventDefault();
+    if (!access || !cursoId) return;
+    setSalvando(true);
+    setErro(null);
+    try {
+      if (editModulo) {
+        await apiRequest(`/admin/modulos/${editModulo.id}/`, {
+          method: "PATCH",
+          token: access,
+          body: formModulo,
+        });
+      } else {
+        await apiRequest(`/admin/cursos/${cursoId}/modulos/`, {
+          method: "POST",
+          token: access,
+          body: formModulo,
+        });
+      }
+      setModalModulo(false);
+      await carregarCursoEModulos();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao salvar módulo");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function excluirModulo(m: Modulo) {
+    if (!access || !confirm(`Excluir o módulo "${m.titulo}" e suas aulas?`)) return;
+    await apiRequest(`/admin/modulos/${m.id}/`, { method: "DELETE", token: access });
+    if (moduloSel === m.id) setModuloSel(null);
+    await carregarCursoEModulos();
+  }
+
+  function abrirNovaAula() {
+    setEditAula(null);
+    setFormAula(aulaVazia);
+    setModalAula(true);
+  }
+
+  function abrirEditarAula(a: AulaAdmin) {
+    setEditAula(a);
+    setFormAula({
+      titulo: a.titulo,
+      descricao: a.descricao || "",
+      ordem: a.ordem,
+      ativo: a.ativo,
+      duracao_segundos: a.duracao_segundos ?? "",
+      videoFile: null,
+    });
+    setModalAula(true);
+  }
+
+  async function salvarAula(e: FormEvent) {
+    e.preventDefault();
+    if (!access || moduloSel == null) return;
+    setSalvando(true);
+    setErro(null);
+    const fd = new FormData();
+    fd.append("titulo", formAula.titulo);
+    fd.append("descricao", formAula.descricao);
+    fd.append("ordem", String(formAula.ordem));
+    fd.append("ativo", formAula.ativo ? "true" : "false");
+    if (formAula.duracao_segundos !== "" && formAula.duracao_segundos != null) {
+      fd.append("duracao_segundos", String(formAula.duracao_segundos));
+    }
+    if (formAula.videoFile) fd.append("video", formAula.videoFile);
+    try {
+      if (editAula) {
+        await apiFormData(`/admin/aulas/${editAula.id}/`, {
+          method: "PATCH",
+          token: access,
+          formData: fd,
+        });
+      } else {
+        await apiFormData(`/admin/modulos/${moduloSel}/aulas/`, {
+          method: "POST",
+          token: access,
+          formData: fd,
+        });
+      }
+      setModalAula(false);
+      await carregarAulas(moduloSel);
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao salvar aula");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function excluirAula(a: AulaAdmin) {
+    if (!access || !confirm(`Excluir a aula "${a.titulo}"?`)) return;
+    await apiRequest(`/admin/aulas/${a.id}/`, { method: "DELETE", token: access });
+    if (aulaSel === a.id) setAulaSel(null);
+    if (moduloSel != null) await carregarAulas(moduloSel);
+  }
+
+  async function salvarMaterial(e: FormEvent) {
+    e.preventDefault();
+    if (!access || aulaSel == null) return;
+    setSalvando(true);
+    setErro(null);
+    const fd = new FormData();
+    fd.append("titulo", formMat.titulo);
+    fd.append("ordem", String(formMat.ordem));
+    fd.append("ativo", formMat.ativo ? "true" : "false");
+    if (formMat.arquivo) fd.append("arquivo", formMat.arquivo);
+    try {
+      if (editMat) {
+        await apiFormData(`/admin/materiais/${editMat.id}/`, {
+          method: "PATCH",
+          token: access,
+          formData: fd,
+        });
+      } else {
+        if (!formMat.arquivo) throw new Error("Envie um arquivo.");
+        await apiFormData(`/admin/aulas/${aulaSel}/materiais/`, {
+          method: "POST",
+          token: access,
+          formData: fd,
+        });
+      }
+      setModalMat(false);
+      await carregarAulaExtra(aulaSel);
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao salvar material");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function excluirMaterial(m: MaterialAula) {
+    if (!access || !confirm(`Excluir material "${m.titulo}"?`)) return;
+    await apiRequest(`/admin/materiais/${m.id}/`, { method: "DELETE", token: access });
+    if (aulaSel != null) await carregarAulaExtra(aulaSel);
+  }
+
+  async function salvarQuiz(e: FormEvent) {
+    e.preventDefault();
+    if (!access || aulaSel == null) return;
+    setSalvando(true);
+    setErro(null);
+    try {
+      if (quiz) {
+        await apiRequest(`/admin/quizzes/${quiz.id}/`, {
+          method: "PATCH",
+          token: access,
+          body: formQuiz,
+        });
+      } else {
+        await apiRequest(`/admin/aulas/${aulaSel}/quiz/`, {
+          method: "POST",
+          token: access,
+          body: formQuiz,
+        });
+      }
+      setModalQuiz(false);
+      await carregarAulaExtra(aulaSel);
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao salvar quiz");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function excluirQuiz() {
+    if (!access || !quiz || !confirm("Inativar este quiz?")) return;
+    await apiRequest(`/admin/quizzes/${quiz.id}/`, { method: "DELETE", token: access });
+    if (aulaSel != null) await carregarAulaExtra(aulaSel);
+  }
+
+  async function salvarPergunta(e: FormEvent) {
+    e.preventDefault();
+    if (!access || !quiz) return;
+    setSalvando(true);
+    try {
+      if (editPerg) {
+        await apiRequest(`/admin/perguntas/${editPerg.id}/`, {
+          method: "PATCH",
+          token: access,
+          body: formPerg,
+        });
+      } else {
+        await apiRequest(`/admin/quizzes/${quiz.id}/perguntas/`, {
+          method: "POST",
+          token: access,
+          body: formPerg,
+        });
+      }
+      setModalPerg(false);
+      if (aulaSel != null) await carregarAulaExtra(aulaSel);
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao salvar pergunta");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function excluirPergunta(p: PerguntaAdmin) {
+    if (!access || !confirm("Excluir pergunta?")) return;
+    await apiRequest(`/admin/perguntas/${p.id}/`, { method: "DELETE", token: access });
+    if (aulaSel != null) await carregarAulaExtra(aulaSel);
+  }
+
+  async function salvarAlt(e: FormEvent) {
+    e.preventDefault();
+    if (!access || pergAltId == null) return;
+    setSalvando(true);
+    try {
+      await apiRequest(`/admin/perguntas/${pergAltId}/alternativas/`, {
+        method: "POST",
+        token: access,
+        body: formAlt,
+      });
+      setModalAlt(false);
+      if (aulaSel != null) await carregarAulaExtra(aulaSel);
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao salvar alternativa");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function excluirAlt(id: number) {
+    if (!access || !confirm("Excluir alternativa?")) return;
+    await apiRequest(`/admin/alternativas/${id}/`, { method: "DELETE", token: access });
+    if (aulaSel != null) await carregarAulaExtra(aulaSel);
+  }
+
+  return (
+    <div>
+      <div className="page-head">
+        <div>
+          <Link to="/cursos" className="btn btn--ghost btn--small">
+            ← Cursos
+          </Link>
+          <h1 style={{ marginTop: "0.75rem" }}>
+            Conteúdo{curso ? `: ${curso.titulo}` : ""}
+          </h1>
+        </div>
+        <button type="button" className="btn btn--primary btn--small" onClick={abrirNovoModulo}>
+          Novo módulo
+        </button>
+      </div>
+      <p className="page-lead">
+        Módulos, aulas (vídeo), materiais e quizzes. Vídeo até 500&nbsp;MB; materiais até 50&nbsp;MB.
+      </p>
+      {erro && <p className="form-erro">{erro}</p>}
+
+      <div className="table-wrap">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Módulo</th>
+              <th>Ordem</th>
+              <th>Ativo</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {modulos.map((m) => (
+              <tr
+                key={m.id}
+                className={moduloSel === m.id ? "row-selected" : undefined}
+                onClick={() => setModuloSel(m.id)}
+                style={{ cursor: "pointer" }}
+              >
+                <td>{m.titulo}</td>
+                <td>{m.ordem}</td>
+                <td>{m.ativo ? "Sim" : "Não"}</td>
+                <td className="td-actions" onClick={(e) => e.stopPropagation()}>
+                  <button type="button" className="btn btn--ghost btn--small" onClick={() => abrirEditarModulo(m)}>
+                    Editar
+                  </button>
+                  <button type="button" className="btn btn--ghost btn--small" onClick={() => excluirModulo(m)}>
+                    Excluir
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {modulos.length === 0 && (
+              <tr>
+                <td colSpan={4}>Nenhum módulo. Clique em Novo módulo.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {moduloSel != null && (
+        <>
+          <div className="page-head" style={{ marginTop: "1.5rem" }}>
+            <h2>Aulas do módulo</h2>
+            <button type="button" className="btn btn--primary btn--small" onClick={abrirNovaAula}>
+              Nova aula
+            </button>
+          </div>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Título</th>
+                  <th>Vídeo</th>
+                  <th>Ordem</th>
+                  <th>Ativo</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {aulas.map((a) => (
+                  <tr
+                    key={a.id}
+                    className={aulaSel === a.id ? "row-selected" : undefined}
+                    onClick={() => setAulaSel(a.id)}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <td>{a.titulo}</td>
+                    <td>{a.video_url ? "Sim" : "—"}</td>
+                    <td>{a.ordem}</td>
+                    <td>{a.ativo ? "Sim" : "Não"}</td>
+                    <td className="td-actions" onClick={(e) => e.stopPropagation()}>
+                      <button type="button" className="btn btn--ghost btn--small" onClick={() => abrirEditarAula(a)}>
+                        Editar
+                      </button>
+                      <button type="button" className="btn btn--ghost btn--small" onClick={() => excluirAula(a)}>
+                        Excluir
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {aulas.length === 0 && (
+                  <tr>
+                    <td colSpan={5}>Nenhuma aula neste módulo.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {aulaSel != null && (
+        <>
+          <div className="page-head" style={{ marginTop: "1.5rem" }}>
+            <h2>Materiais da aula</h2>
+            <button
+              type="button"
+              className="btn btn--primary btn--small"
+              onClick={() => {
+                setEditMat(null);
+                setFormMat(matVazio);
+                setModalMat(true);
+              }}
+            >
+              Novo material
+            </button>
+          </div>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Título</th>
+                  <th>Arquivo</th>
+                  <th>Ordem</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {materiais.map((m) => (
+                  <tr key={m.id}>
+                    <td>{m.titulo}</td>
+                    <td>
+                      {m.arquivo_url ? (
+                        <a href={m.arquivo_url} target="_blank" rel="noreferrer">
+                          Abrir
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td>{m.ordem}</td>
+                    <td className="td-actions">
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--small"
+                        onClick={() => {
+                          setEditMat(m);
+                          setFormMat({
+                            titulo: m.titulo,
+                            ordem: m.ordem,
+                            ativo: m.ativo,
+                            arquivo: null,
+                          });
+                          setModalMat(true);
+                        }}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--small"
+                        onClick={() => excluirMaterial(m)}
+                      >
+                        Excluir
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {materiais.length === 0 && (
+                  <tr>
+                    <td colSpan={4}>Nenhum material.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="page-head" style={{ marginTop: "1.5rem" }}>
+            <h2>Quiz da aula</h2>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button
+                type="button"
+                className="btn btn--primary btn--small"
+                onClick={() => {
+                  setFormQuiz(
+                    quiz
+                      ? {
+                          titulo: quiz.titulo,
+                          nota_minima: quiz.nota_minima,
+                          bloqueia_proxima: quiz.bloqueia_proxima,
+                          ativo: quiz.ativo,
+                        }
+                      : quizVazio
+                  );
+                  setModalQuiz(true);
+                }}
+              >
+                {quiz ? "Editar quiz" : "Novo quiz"}
+              </button>
+              {quiz && (
+                <button type="button" className="btn btn--ghost btn--small" onClick={excluirQuiz}>
+                  Excluir
+                </button>
+              )}
+            </div>
+          </div>
+          {quiz && (
+            <>
+              <p className="page-lead">
+                {quiz.titulo} — nota mín. {quiz.nota_minima}%
+                {quiz.bloqueia_proxima ? " · bloqueia próxima" : ""}
+              </p>
+              <div className="page-head">
+                <h3>Perguntas</h3>
+                <button
+                  type="button"
+                  className="btn btn--primary btn--small"
+                  onClick={() => {
+                    setEditPerg(null);
+                    setFormPerg(perguntaVazia);
+                    setModalPerg(true);
+                  }}
+                >
+                  Nova pergunta
+                </button>
+              </div>
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Enunciado</th>
+                      <th>Alternativas</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(quiz.perguntas || []).map((p) => (
+                      <tr key={p.id}>
+                        <td>{p.enunciado}</td>
+                        <td>
+                          <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+                            {(p.alternativas || []).map((a) => (
+                              <li key={a.id}>
+                                {a.texto}
+                                {a.correta ? " ✓" : ""}{" "}
+                                <button
+                                  type="button"
+                                  className="btn btn--ghost btn--small"
+                                  onClick={() => excluirAlt(a.id)}
+                                >
+                                  ×
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--small"
+                            onClick={() => {
+                              setPergAltId(p.id);
+                              setFormAlt(altVazia);
+                              setModalAlt(true);
+                            }}
+                          >
+                            + Alternativa
+                          </button>
+                        </td>
+                        <td className="td-actions">
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--small"
+                            onClick={() => {
+                              setEditPerg(p);
+                              setFormPerg({ enunciado: p.enunciado, ordem: p.ordem });
+                              setModalPerg(true);
+                            }}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--small"
+                            onClick={() => excluirPergunta(p)}
+                          >
+                            Excluir
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {(quiz.perguntas || []).length === 0 && (
+                      <tr>
+                        <td colSpan={3}>Nenhuma pergunta.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      <Modal aberto={modalModulo} titulo={editModulo ? "Editar módulo" : "Novo módulo"} onFechar={() => setModalModulo(false)}>
+        <form className="form-grid" onSubmit={salvarModulo}>
+          <label>
+            Título
+            <input value={formModulo.titulo} onChange={(e) => setFormModulo({ ...formModulo, titulo: e.target.value })} required />
+          </label>
+          <label>
+            Ordem
+            <input type="number" value={formModulo.ordem} onChange={(e) => setFormModulo({ ...formModulo, ordem: Number(e.target.value) })} />
+          </label>
+          <label className="check-row">
+            <input type="checkbox" checked={formModulo.ativo} onChange={(e) => setFormModulo({ ...formModulo, ativo: e.target.checked })} />
+            Ativo
+          </label>
+          <button className="btn btn--primary" type="submit" disabled={salvando}>
+            {salvando ? "Salvando…" : "Salvar"}
+          </button>
+        </form>
+      </Modal>
+
+      <Modal aberto={modalAula} titulo={editAula ? "Editar aula" : "Nova aula"} onFechar={() => setModalAula(false)}>
+        <form className="form-grid" onSubmit={salvarAula}>
+          <label>
+            Título
+            <input value={formAula.titulo} onChange={(e) => setFormAula({ ...formAula, titulo: e.target.value })} required />
+          </label>
+          <label>
+            Descrição
+            <textarea value={formAula.descricao} onChange={(e) => setFormAula({ ...formAula, descricao: e.target.value })} rows={3} />
+          </label>
+          <label>
+            Vídeo (.mp4 / .webm)
+            <input
+              type="file"
+              accept="video/mp4,video/webm,.mp4,.webm"
+              onChange={(e) => setFormAula({ ...formAula, videoFile: e.target.files?.[0] ?? null })}
+            />
+          </label>
+          <label>
+            Duração (segundos)
+            <input
+              type="number"
+              value={formAula.duracao_segundos}
+              onChange={(e) =>
+                setFormAula({
+                  ...formAula,
+                  duracao_segundos: e.target.value === "" ? "" : Number(e.target.value),
+                })
+              }
+            />
+          </label>
+          <label>
+            Ordem
+            <input type="number" value={formAula.ordem} onChange={(e) => setFormAula({ ...formAula, ordem: Number(e.target.value) })} />
+          </label>
+          <label className="check-row">
+            <input type="checkbox" checked={formAula.ativo} onChange={(e) => setFormAula({ ...formAula, ativo: e.target.checked })} />
+            Ativo
+          </label>
+          <button className="btn btn--primary" type="submit" disabled={salvando}>
+            {salvando ? "Salvando…" : "Salvar"}
+          </button>
+        </form>
+      </Modal>
+
+      <Modal aberto={modalMat} titulo={editMat ? "Editar material" : "Novo material"} onFechar={() => setModalMat(false)}>
+        <form className="form-grid" onSubmit={salvarMaterial}>
+          <label>
+            Título
+            <input value={formMat.titulo} onChange={(e) => setFormMat({ ...formMat, titulo: e.target.value })} required />
+          </label>
+          <label>
+            Arquivo (pdf/zip/imagem)
+            <input
+              type="file"
+              accept=".pdf,.zip,.png,.jpg,.jpeg,.webp"
+              onChange={(e) => setFormMat({ ...formMat, arquivo: e.target.files?.[0] ?? null })}
+              required={!editMat}
+            />
+          </label>
+          <label>
+            Ordem
+            <input type="number" value={formMat.ordem} onChange={(e) => setFormMat({ ...formMat, ordem: Number(e.target.value) })} />
+          </label>
+          <button className="btn btn--primary" type="submit" disabled={salvando}>
+            {salvando ? "Salvando…" : "Salvar"}
+          </button>
+        </form>
+      </Modal>
+
+      <Modal aberto={modalQuiz} titulo={quiz ? "Editar quiz" : "Novo quiz"} onFechar={() => setModalQuiz(false)}>
+        <form className="form-grid" onSubmit={salvarQuiz}>
+          <label>
+            Título
+            <input value={formQuiz.titulo} onChange={(e) => setFormQuiz({ ...formQuiz, titulo: e.target.value })} required />
+          </label>
+          <label>
+            Nota mínima (%)
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={formQuiz.nota_minima}
+              onChange={(e) => setFormQuiz({ ...formQuiz, nota_minima: Number(e.target.value) })}
+            />
+          </label>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={formQuiz.bloqueia_proxima}
+              onChange={(e) => setFormQuiz({ ...formQuiz, bloqueia_proxima: e.target.checked })}
+            />
+            Bloqueia próxima aula se reprovado
+          </label>
+          <label className="check-row">
+            <input type="checkbox" checked={formQuiz.ativo} onChange={(e) => setFormQuiz({ ...formQuiz, ativo: e.target.checked })} />
+            Ativo
+          </label>
+          <button className="btn btn--primary" type="submit" disabled={salvando}>
+            {salvando ? "Salvando…" : "Salvar"}
+          </button>
+        </form>
+      </Modal>
+
+      <Modal aberto={modalPerg} titulo={editPerg ? "Editar pergunta" : "Nova pergunta"} onFechar={() => setModalPerg(false)}>
+        <form className="form-grid" onSubmit={salvarPergunta}>
+          <label>
+            Enunciado
+            <textarea value={formPerg.enunciado} onChange={(e) => setFormPerg({ ...formPerg, enunciado: e.target.value })} required rows={3} />
+          </label>
+          <label>
+            Ordem
+            <input type="number" value={formPerg.ordem} onChange={(e) => setFormPerg({ ...formPerg, ordem: Number(e.target.value) })} />
+          </label>
+          <button className="btn btn--primary" type="submit" disabled={salvando}>
+            {salvando ? "Salvando…" : "Salvar"}
+          </button>
+        </form>
+      </Modal>
+
+      <Modal aberto={modalAlt} titulo="Nova alternativa" onFechar={() => setModalAlt(false)}>
+        <form className="form-grid" onSubmit={salvarAlt}>
+          <label>
+            Texto
+            <input value={formAlt.texto} onChange={(e) => setFormAlt({ ...formAlt, texto: e.target.value })} required />
+          </label>
+          <label className="check-row">
+            <input type="checkbox" checked={formAlt.correta} onChange={(e) => setFormAlt({ ...formAlt, correta: e.target.checked })} />
+            Correta
+          </label>
+          <label>
+            Ordem
+            <input type="number" value={formAlt.ordem} onChange={(e) => setFormAlt({ ...formAlt, ordem: Number(e.target.value) })} />
+          </label>
+          <button className="btn btn--primary" type="submit" disabled={salvando}>
+            {salvando ? "Salvando…" : "Salvar"}
+          </button>
+        </form>
+      </Modal>
+    </div>
+  );
+}

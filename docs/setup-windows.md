@@ -85,6 +85,8 @@ No navegador use a **porta 80** (Nginx). Não use `:5173` — essa porta do Vite
 | http://localhost/ | Landing EducaMoney (planos/cursos) |
 | http://localhost/login | Login |
 | http://localhost/cadastro | Cadastro |
+| http://localhost/painel/login | Painel admin |
+| http://localhost/portal/ | Portal do aluno |
 | http://localhost/api/health/ | JSON `{"status":"ok",...}` |
 
 ## 8. Comandos úteis no dia a dia

@@ -5,6 +5,8 @@ export type User = {
   username: string;
   email: string;
   first_name: string;
+  papel?: string;
+  ra?: string | null;
 };
 
 export type Plano = {
@@ -12,6 +14,7 @@ export type Plano = {
   nome: string;
   descricao: string;
   preco_referencia: string;
+  beneficios: string[];
   ordem: number;
 };
 
@@ -50,6 +53,7 @@ export type PublicConfig = {
   nome_site?: string;
   whatsapp_telefone: string;
   whatsapp_mensagem: string;
+  total_cursos?: number;
   app_version: string;
 };
 

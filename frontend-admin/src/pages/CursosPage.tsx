@@ -1,5 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { apiRequest, type Curso, type Plano, type User } from "../api/client";
+import { Link } from "react-router-dom";
+import {
+  apiFormData,
+  apiRequest,
+  type Curso,
+  type Plano,
+  type Subcategoria,
+  type User,
+} from "../api/client";
 import { Modal } from "../components/Modal";
 import { useAuth } from "../context/AuthContext";
 
@@ -10,6 +18,9 @@ const vazio = {
   ordem: 0,
   instrutor_id: null as number | null,
   plano_ids: [] as number[],
+  subcategoria_id: null as number | null,
+  icone_key: "",
+  capaFile: null as File | null,
 };
 
 export function CursosPage() {
@@ -17,6 +28,7 @@ export function CursosPage() {
   const [itens, setItens] = useState<Curso[]>([]);
   const [planos, setPlanos] = useState<Plano[]>([]);
   const [instrutores, setInstrutores] = useState<User[]>([]);
+  const [subs, setSubs] = useState<Subcategoria[]>([]);
   const [erro, setErro] = useState<string | null>(null);
   const [modalAberto, setModalAberto] = useState(false);
   const [editando, setEditando] = useState<Curso | null>(null);
@@ -25,16 +37,18 @@ export function CursosPage() {
 
   async function carregar() {
     if (!access) return;
-    const [c, p, i] = await Promise.all([
+    const [c, p, i, s] = await Promise.all([
       apiRequest<Curso[]>("/admin/cursos/", { token: access }),
       apiRequest<Plano[]>("/admin/planos/", { token: access }).catch(() =>
         apiRequest<Plano[]>("/public/planos/")
       ),
       apiRequest<User[]>("/admin/instrutores/", { token: access }),
+      apiRequest<Subcategoria[]>("/admin/subcategorias/", { token: access }),
     ]);
     setItens(c);
     setPlanos(p);
     setInstrutores(i);
+    setSubs(s);
   }
 
   useEffect(() => {
@@ -56,6 +70,9 @@ export function CursosPage() {
       ordem: c.ordem,
       instrutor_id: c.instrutor_id,
       plano_ids: c.plano_ids || [],
+      subcategoria_id: c.subcategoria_id,
+      icone_key: c.icone_key || "",
+      capaFile: null,
     });
     setModalAberto(true);
   }
@@ -74,26 +91,30 @@ export function CursosPage() {
     if (!access) return;
     setSalvando(true);
     setErro(null);
-    const body = {
-      titulo: form.titulo,
-      descricao: form.descricao,
-      ativo: form.ativo,
-      ordem: form.ordem,
-      instrutor_id: form.instrutor_id,
-      plano_ids: form.plano_ids,
-    };
+    const fd = new FormData();
+    fd.append("titulo", form.titulo);
+    fd.append("descricao", form.descricao);
+    fd.append("ativo", form.ativo ? "true" : "false");
+    fd.append("ordem", String(form.ordem));
+    fd.append("icone_key", form.icone_key);
+    if (form.instrutor_id != null) fd.append("instrutor_id", String(form.instrutor_id));
+    if (form.subcategoria_id != null) {
+      fd.append("subcategoria_id", String(form.subcategoria_id));
+    }
+    form.plano_ids.forEach((id) => fd.append("plano_ids", String(id)));
+    if (form.capaFile) fd.append("capa", form.capaFile);
     try {
       if (editando) {
-        await apiRequest(`/admin/cursos/${editando.id}/`, {
+        await apiFormData(`/admin/cursos/${editando.id}/`, {
           method: "PATCH",
           token: access,
-          body,
+          formData: fd,
         });
       } else {
-        await apiRequest("/admin/cursos/", {
+        await apiFormData("/admin/cursos/", {
           method: "POST",
           token: access,
-          body,
+          formData: fd,
         });
       }
       setModalAberto(false);
@@ -144,6 +165,12 @@ export function CursosPage() {
                 <td>{(c.plano_ids || []).length}</td>
                 <td>{c.ativo ? "Sim" : "Não"}</td>
                 <td className="td-actions">
+                  <Link
+                    to={`/cursos/${c.id}/conteudo`}
+                    className="btn btn--ghost btn--small"
+                  >
+                    Conteúdo
+                  </Link>
                   <button type="button" className="btn btn--ghost btn--small" onClick={() => abrirEditar(c)}>
                     Editar
                   </button>
@@ -181,6 +208,46 @@ export function CursosPage() {
               required
               rows={3}
             />
+          </label>
+          <label>
+            Subcategoria
+            <select
+              value={form.subcategoria_id ?? ""}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  subcategoria_id: e.target.value ? Number(e.target.value) : null,
+                })
+              }
+            >
+              <option value="">— nenhuma —</option>
+              {subs.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.categoria_titulo} / {s.titulo}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Ícone key
+            <input
+              value={form.icone_key}
+              onChange={(e) => setForm({ ...form, icone_key: e.target.value })}
+              placeholder="wallet, chart, shield…"
+            />
+          </label>
+          <label>
+            Capa (jpg/png/webp)
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"
+              onChange={(e) =>
+                setForm({ ...form, capaFile: e.target.files?.[0] ?? null })
+              }
+            />
+            {editando?.capa_url && !form.capaFile && (
+              <span className="field-hint">Já há capa. Envie outra para substituir.</span>
+            )}
           </label>
           <label>
             Instrutor

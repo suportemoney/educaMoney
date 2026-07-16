@@ -63,3 +63,15 @@ class IsMerchantOrAbove(BasePermission):
 class IsInstrutor(BasePermission):
     def has_permission(self, request, view):
         return papel_em(request.user, Perfil.Papel.INSTRUTOR)
+
+
+class IsAluno(BasePermission):
+    """Somente aluno (não staff do painel / superuser)."""
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        if user.is_superuser:
+            return False
+        return obter_papel(user) == Perfil.Papel.ALUNO

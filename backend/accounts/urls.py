@@ -8,6 +8,8 @@ from .views import (
     LoginView,
     LogoutView,
     MeView,
+    PortalHandoffConsumeView,
+    PortalHandoffCreateView,
     RegisterView,
 )
 
@@ -17,6 +19,16 @@ urlpatterns = [
     path("refresh/", TokenRefreshView.as_view(), name="auth-refresh"),
     path("logout/", LogoutView.as_view(), name="auth-logout"),
     path("me/", MeView.as_view(), name="auth-me"),
+    path(
+        "portal-handoff/",
+        PortalHandoffCreateView.as_view(),
+        name="auth-portal-handoff",
+    ),
+    path(
+        "portal-handoff/consume/",
+        PortalHandoffConsumeView.as_view(),
+        name="auth-portal-handoff-consume",
+    ),
     path("admin/usuarios/", AdminUsuarioListCreateView.as_view(), name="admin-usuarios"),
     path(
         "admin/usuarios/<int:pk>/",

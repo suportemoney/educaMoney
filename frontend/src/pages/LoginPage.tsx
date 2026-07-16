@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { ApiError, apiRequest, type Ativacao } from "../api/client";
+import { ApiError } from "../api/client";
 import { Header } from "../components/Header";
 import { useAuth } from "../context/AuthContext";
 
@@ -20,21 +20,7 @@ export function LoginPage() {
     setEnviando(true);
     try {
       await login(username.trim(), password);
-      if (from) {
-        navigate(from, { replace: true });
-        return;
-      }
-      const token = localStorage.getItem("em_access");
-      if (token) {
-        const ativacoes = await apiRequest<Ativacao[]>("/aluno/ativacoes/", {
-          token,
-        }).catch(() => []);
-        navigate(ativacoes.length > 0 ? "/meus-cursos" : "/ativar", {
-          replace: true,
-        });
-        return;
-      }
-      navigate("/meus-cursos", { replace: true });
+      navigate(from || "/", { replace: true });
     } catch (err) {
       if (err instanceof ApiError) {
         setErro("Usuário ou senha inválidos.");
@@ -52,7 +38,8 @@ export function LoginPage() {
       <main className="auth-panel">
         <h1>Entrar</h1>
         <p className="auth-panel__lead">
-          Acesse sua conta EducaMoney para acompanhar planos e cursos.
+          Acesse sua conta. Depois use o menu do seu nome para abrir o portal do
+          aluno.
         </p>
         <form className="auth-form" onSubmit={onSubmit}>
           <label>

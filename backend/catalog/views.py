@@ -41,11 +41,13 @@ class PublicConfigView(APIView):
         if wa:
             telefone = wa.telefone
             mensagem = wa.mensagem_template
+        total_cursos = Curso.objects.filter(ativo=True).count()
         return Response(
             {
                 "nome_site": cfg.nome_site,
                 "whatsapp_telefone": telefone,
                 "whatsapp_mensagem": mensagem,
+                "total_cursos": total_cursos,
                 "app_version": getattr(settings, "APP_VERSION", "0-unknown"),
             }
         )

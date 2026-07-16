@@ -25,6 +25,8 @@ export type Plano = {
   nome: string;
   descricao: string;
   preco_referencia: string;
+  beneficios: string[];
+  duracao_dias: number;
   ativo: boolean;
   ordem: number;
 };
@@ -38,6 +40,169 @@ export type Curso = {
   instrutor_id: number | null;
   instrutor_nome: string | null;
   plano_ids: number[];
+  subcategoria_id: number | null;
+  subcategoria_titulo?: string | null;
+  categoria_titulo?: string | null;
+  icone_url: string | null;
+  icone_key: string;
+  capa_url?: string | null;
+};
+
+export type MaterialAula = {
+  id: number;
+  aula: number;
+  titulo: string;
+  arquivo_url: string | null;
+  ordem: number;
+  ativo: boolean;
+};
+
+export type AlternativaAdmin = {
+  id: number;
+  pergunta: number;
+  texto: string;
+  correta: boolean;
+  ordem: number;
+};
+
+export type PerguntaAdmin = {
+  id: number;
+  quiz: number;
+  enunciado: string;
+  ordem: number;
+  alternativas: AlternativaAdmin[];
+};
+
+export type QuizAdmin = {
+  id: number;
+  aula: number;
+  titulo: string;
+  nota_minima: number;
+  bloqueia_proxima: boolean;
+  ativo: boolean;
+  perguntas: PerguntaAdmin[];
+};
+
+export type AlunoAdmin = {
+  id: number;
+  username: string;
+  email: string;
+  first_name: string;
+  is_active: boolean;
+  ra: string | null;
+  ativacoes_vigentes: number;
+  planos: string[];
+  progresso: {
+    curso_id: number;
+    curso_titulo: string;
+    aulas_total: number;
+    aulas_concluidas: number;
+    progresso_pct: number;
+  }[];
+  ativacoes?: {
+    id: number;
+    plano_nome: string;
+    valido_ate: string | null;
+    ativo: boolean;
+  }[];
+  certificados?: {
+    id: number;
+    curso_titulo: string;
+    codigo: string;
+    revogado: boolean;
+    emitido_em: string;
+  }[];
+};
+
+export type CertificadoAdmin = {
+  id: number;
+  usuario: number;
+  usuario_nome: string;
+  usuario_ra: string | null;
+  curso: number;
+  curso_titulo: string;
+  codigo: string;
+  emitido_em: string;
+  revogado: boolean;
+};
+
+export type Categoria = {
+  id: number;
+  titulo: string;
+  slug: string;
+  ordem: number;
+  ativo: boolean;
+  icone_url: string | null;
+  icone_key: string;
+};
+
+export type Subcategoria = {
+  id: number;
+  categoria: number;
+  categoria_titulo: string;
+  titulo: string;
+  slug: string;
+  ordem: number;
+  ativo: boolean;
+};
+
+export type ConjuntoAdmin = {
+  id: number;
+  titulo: string;
+  descricao: string;
+  categoria: number;
+  categoria_titulo: string;
+  icone_url: string | null;
+  icone_key: string;
+  ordem: number;
+  ativo: boolean;
+  curso_ids: number[];
+};
+
+export type AtivacaoAdmin = {
+  id: number;
+  plano: number;
+  plano_nome: string;
+  token_codigo: string;
+  data_ativacao: string;
+  ativo: boolean;
+  valido_ate: string | null;
+  renovado_em: string | null;
+  usuario_nome: string;
+  vigente: boolean;
+};
+
+export type TicketAdmin = {
+  id: number;
+  usuario: number;
+  usuario_nome: string;
+  usuario_ra: string | null;
+  assunto: string;
+  mensagem: string;
+  status: string;
+  resposta: string;
+  criado_em: string;
+  atualizado_em: string;
+};
+
+export type Modulo = {
+  id: number;
+  curso: number;
+  titulo: string;
+  ordem: number;
+  ativo: boolean;
+};
+
+export type AulaAdmin = {
+  id: number;
+  modulo: number;
+  titulo: string;
+  descricao: string;
+  video: string | null;
+  video_url: string | null;
+  duracao_segundos: number | null;
+  ordem: number;
+  ativo: boolean;
 };
 
 export type TokenKey = {
@@ -95,6 +260,26 @@ export async function apiRequest<T>(path: string, options: Opts = {}): Promise<T
     method: options.method || "GET",
     headers,
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+  });
+
+  if (res.status === 204) return undefined as T;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as T;
+}
+
+/** Upload multipart (vídeo de aula) — não força Content-Type JSON. */
+export async function apiFormData<T>(
+  path: string,
+  options: { method?: string; formData: FormData; token?: string | null }
+): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (options.token) headers.Authorization = `Bearer ${options.token}`;
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: options.method || "POST",
+    headers,
+    body: options.formData,
   });
 
   if (res.status === 204) return undefined as T;

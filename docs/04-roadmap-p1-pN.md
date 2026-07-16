@@ -39,10 +39,56 @@
 - SPA: `/ativar`, `/meus-cursos` (guard JWT)
 - Painel Tokens mostra usado por / usado em
 
-## P7 — Conteúdo e progresso
+## P7 — Portal do aluno separado (entregue)
 
-- Módulos/aulas, player, progresso / consumo de conteúdo
+- SPA `frontend-aluno` em `/portal/` (prod: `aluno.educamoney.com.br`)
+- RA no perfil + handoff JWT landing → portal
+- Mini-menu na landing (Portal / Ativar se sem plano / Sair)
+- Nginx: path `/portal/` + rascunho `nginx/hosts.prod.conf`
 
-## P8 — Operação e qualidade
+## P8 — Conteúdo, progresso e skills (entregue)
 
-- Soft-delete, backups, observabilidade
+- `Modulo` / `Aula` (upload vídeo mp4/webm) / `ProgressoAula`
+- Painel: conteúdo por curso (CRUD módulos/aulas)
+- Portal: detalhe do curso, player HTML5, progresso %
+- Agent Skills em `.cursor/skills/` (stack, portal, painel-conteudo)
+- Nginx/Django: upload até 500M
+
+## P9 — Portal completo + catálogo (entregue)
+
+- Categorias / subcategorias / conjuntos (trilhas) + ícone nos cursos
+- Portal: Início (bento), Meus cursos (grid+filtros), Conjuntos, Finanças, Secretaria, Perfil
+- `Ativacao.valido_ate` + estender no painel; upgrade/renovar via WhatsApp
+- Tickets de secretaria (aluno + painel)
+
+## P11 — Conteúdo rico (entregue)
+
+- `MaterialAula`, capa de curso, `Plano.duracao_dias`
+- Painel: materiais e duração; confirmação em categorias/conjuntos
+
+## P12 — Gestão de alunos (entregue)
+
+- `/api/admin/alunos/` + tela Alunos (RA, progresso, estender)
+
+## P13 — Quizzes (entregue)
+
+- `Quiz` / `Pergunta` / `Alternativa` / `TentativaQuiz`
+- Painel no conteúdo da aula; API aluno submete tentativa
+
+## P14 — Certificados (entregue)
+
+- Emissão por conclusão + quizzes; HTML imprimível; admin listar/revogar
+- Validação pública `GET /api/public/certificados/{codigo}/`
+
+## P15 — Portal LMS (entregue)
+
+- Materiais, quiz no player, certificados, perfil editável (PATCH `/auth/me/`)
+
+## P16 — Operação e qualidade
+
+- Soft-delete helpers, health com check de DB, script `scripts/backup-postgres.sh`
+- Soft-delete preferencial já aplicado em categorias/conjuntos/materiais/quizzes
+
+## P10 — (legado) Operação
+
+- Itens absorvidos em P16; backups e observabilidade contínua

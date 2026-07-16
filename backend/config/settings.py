@@ -99,6 +99,10 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# Uploads grandes (aulas em vídeo) — alinhado ao nginx 500M
+DATA_UPLOAD_MAX_MEMORY_SIZE = 500 * 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CORS_ALLOWED_ORIGINS = [
@@ -126,6 +130,9 @@ SIMPLE_JWT = {
 }
 
 WHATSAPP_URL = os.environ.get("WHATSAPP_URL", "")
+ALUNO_PORTAL_URL = os.environ.get(
+    "ALUNO_PORTAL_URL", "http://localhost/portal/"
+).rstrip("/") + "/"
 
 
 def _resolver_app_version() -> str:

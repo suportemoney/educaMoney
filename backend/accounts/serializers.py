@@ -36,11 +36,14 @@ class RegisterSerializer(serializers.ModelSerializer):
         user = User(**validated_data)
         user.set_password(password)
         user.save()
-        # Signal cria perfil aluno; reforça papel
-        Perfil.objects.update_or_create(
+        from .ra import garantir_ra
+
+        # Signal cria perfil aluno; reforça papel + RA
+        perfil, _ = Perfil.objects.update_or_create(
             user=user,
             defaults={"papel": Perfil.Papel.ALUNO},
         )
+        garantir_ra(perfil)
         return user
 
 
@@ -48,6 +51,7 @@ class UserSerializer(serializers.ModelSerializer):
     papel = serializers.SerializerMethodField()
     foto_url = serializers.SerializerMethodField()
     bio = serializers.SerializerMethodField()
+    ra = serializers.SerializerMethodField()
     is_superuser = serializers.BooleanField(read_only=True)
     is_active = serializers.BooleanField(read_only=True)
 
@@ -61,6 +65,7 @@ class UserSerializer(serializers.ModelSerializer):
             "papel",
             "foto_url",
             "bio",
+            "ra",
             "is_superuser",
             "is_active",
         )
@@ -81,6 +86,16 @@ class UserSerializer(serializers.ModelSerializer):
     def get_bio(self, obj):
         perfil = getattr(obj, "perfil", None)
         return perfil.bio if perfil else ""
+
+    def get_ra(self, obj):
+        perfil = getattr(obj, "perfil", None)
+        if not perfil:
+            return None
+        if perfil.papel == Perfil.Papel.ALUNO and not perfil.ra:
+            from .ra import garantir_ra
+
+            return garantir_ra(perfil)
+        return perfil.ra
 
 
 class AdminUserCreateSerializer(serializers.Serializer):

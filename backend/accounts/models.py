@@ -32,6 +32,14 @@ class Perfil(models.Model):
         null=True,
     )
     bio = models.CharField("bio", max_length=255, blank=True, default="")
+    ra = models.CharField(
+        "RA",
+        max_length=16,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text="Registro do aluno (EM + ano + sequencial).",
+    )
 
     class Meta:
         verbose_name = "perfil"
@@ -43,3 +51,7 @@ class Perfil(models.Model):
     @property
     def eh_staff_painel(self) -> bool:
         return self.papel != self.Papel.ALUNO or self.user.is_superuser
+
+    @property
+    def eh_aluno(self) -> bool:
+        return self.papel == self.Papel.ALUNO and not self.user.is_superuser

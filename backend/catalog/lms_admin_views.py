@@ -186,17 +186,21 @@ class AdminCursoProvaView(APIView):
             .prefetch_related("perguntas__alternativas")
             .first()
         )
-        if not quiz or (not quiz.ativo and request.query_params.get("incluir_inativos") != "1"):
-            return Response(None)
+        if not quiz or (
+            not quiz.ativo and request.query_params.get("incluir_inativos") != "1"
+        ):
+            return Response(status=status.HTTP_204_NO_CONTENT)
         return Response(QuizAdminSerializer(quiz).data)
 
     def post(self, request, curso_id):
         curso = get_object_or_404(Curso, pk=curso_id)
-        existente = Quiz.objects.filter(curso=curso).first()
+        existente = Quiz.objects.filter(
+            curso=curso, tipo=Quiz.Tipo.PROVA_CURSO
+        ).first()
         ser = QuizAdminSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         if existente:
-            if existente.ativo and existente.tipo == Quiz.Tipo.PROVA_CURSO:
+            if existente.ativo:
                 return Response(
                     {"detail": "Curso já tem prova. Use PATCH."},
                     status=status.HTTP_400_BAD_REQUEST,
@@ -474,7 +478,7 @@ class AdminQuizByAulaView(APIView):
             .first()
         )
         if not quiz:
-            return Response(None)
+            return Response(status=status.HTTP_204_NO_CONTENT)
         return Response(QuizAdminSerializer(quiz).data)
 
     def post(self, request, aula_id):

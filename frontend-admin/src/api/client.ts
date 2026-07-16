@@ -280,7 +280,14 @@ export class ApiError extends Error {
   status: number;
   data: unknown;
   constructor(status: number, data: unknown) {
-    super(`Erro HTTP ${status}`);
+    const msg =
+      data &&
+      typeof data === "object" &&
+      "detail" in data &&
+      typeof (data as { detail: unknown }).detail === "string"
+        ? (data as { detail: string }).detail
+        : `Erro HTTP ${status}`;
+    super(msg);
     this.status = status;
     this.data = data;
   }
@@ -292,6 +299,15 @@ type Opts = {
   token?: string | null;
 };
 
+function parseJsonBody(text: string): unknown {
+  if (!text.trim()) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 export async function apiRequest<T>(path: string, options: Opts = {}): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (options.token) headers.Authorization = `Bearer ${options.token}`;
@@ -302,9 +318,9 @@ export async function apiRequest<T>(path: string, options: Opts = {}): Promise<T
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
 
-  if (res.status === 204) return undefined as T;
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, data);
+  if (res.status === 204) return null as T;
+  const data = parseJsonBody(await res.text());
+  if (!res.ok) throw new ApiError(res.status, data ?? {});
   return data as T;
 }
 
@@ -322,9 +338,9 @@ export async function apiFormData<T>(
     body: options.formData,
   });
 
-  if (res.status === 204) return undefined as T;
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, data);
+  if (res.status === 204) return null as T;
+  const data = parseJsonBody(await res.text());
+  if (!res.ok) throw new ApiError(res.status, data ?? {});
   return data as T;
 }
 

@@ -41,6 +41,10 @@ const altVazia = { texto: "", correta: false, ordem: 0 };
 
 type QuizEditorAlvo = "prova" | "atividade";
 
+function quizValido(q: QuizAdmin | null | undefined): q is QuizAdmin {
+  return !!q && typeof q.id === "number" && Number.isFinite(q.id);
+}
+
 export function CursoConteudoPage() {
   const { cursoId } = useParams<{ cursoId: string }>();
   const [searchParams] = useSearchParams();
@@ -132,8 +136,8 @@ export function CursoConteudoPage() {
       apiRequest<QuizAdmin | null>(`/admin/cursos/${id}/prova/`, { token: access }),
     ]);
     setCurso(c);
-    setModulos(m);
-    setProva(p);
+    setModulos(Array.isArray(m) ? m : []);
+    setProva(quizValido(p) ? p : null);
 
     const midQ = Number(searchParams.get("modulo") || "") || null;
     const mid = midQ && m.some((x) => x.id === midQ) ? midQ : null;
@@ -147,11 +151,14 @@ export function CursoConteudoPage() {
       apiRequest<MaterialAula[]>(`/admin/modulos/${mid}/materiais/`, { token: access }),
       apiRequest<QuizAdmin[]>(`/admin/modulos/${mid}/atividades/`, { token: access }),
     ]);
-    setAulas(listAulas);
-    setMateriais(mats);
-    setAtividades(atvs);
+    const aulasOk = Array.isArray(listAulas) ? listAulas : [];
+    const matsOk = Array.isArray(mats) ? mats : [];
+    const atvsOk = Array.isArray(atvs) ? atvs.filter(quizValido) : [];
+    setAulas(aulasOk);
+    setMateriais(matsOk);
+    setAtividades(atvsOk);
     setAtividadeSel((prev) =>
-      prev != null && atvs.some((x) => x.id === prev) ? prev : atvs[0]?.id ?? null
+      prev != null && atvsOk.some((x) => x.id === prev) ? prev : atvsOk[0]?.id ?? null
     );
   }
 
@@ -160,7 +167,7 @@ export function CursoConteudoPage() {
     const p = await apiRequest<QuizAdmin | null>(`/admin/cursos/${cursoId}/prova/`, {
       token: access,
     });
-    setProva(p);
+    setProva(quizValido(p) ? p : null);
   }
 
   async function recarregarAtividades() {
@@ -169,9 +176,10 @@ export function CursoConteudoPage() {
       `/admin/modulos/${moduloSel}/atividades/`,
       { token: access }
     );
-    setAtividades(atvs);
+    const atvsOk = Array.isArray(atvs) ? atvs.filter(quizValido) : [];
+    setAtividades(atvsOk);
     setAtividadeSel((prev) =>
-      prev != null && atvs.some((x) => x.id === prev) ? prev : atvs[0]?.id ?? null
+      prev != null && atvsOk.some((x) => x.id === prev) ? prev : atvsOk[0]?.id ?? null
     );
   }
 
@@ -344,13 +352,15 @@ export function CursoConteudoPage() {
 
   function abrirModalQuiz(alvo: QuizEditorAlvo, existente: QuizAdmin | null) {
     setQuizEditorAlvo(alvo);
-    setEditQuizId(existente?.id ?? null);
-    if (existente) {
+    const ok = quizValido(existente) ? existente : null;
+    setEditQuizId(ok?.id ?? null);
+    setErro(null);
+    if (ok) {
       setFormQuiz({
-        titulo: existente.titulo,
-        nota_minima: existente.nota_minima,
-        bloqueia_proxima: existente.bloqueia_proxima,
-        ativo: existente.ativo,
+        titulo: ok.titulo,
+        nota_minima: ok.nota_minima,
+        bloqueia_proxima: ok.bloqueia_proxima,
+        ativo: ok.ativo,
       });
     } else {
       setFormQuiz(alvo === "prova" ? provaVazia : quizVazio);
@@ -365,7 +375,7 @@ export function CursoConteudoPage() {
     setErro(null);
     try {
       if (quizEditorAlvo === "prova") {
-        if (prova) {
+        if (quizValido(prova)) {
           await apiRequest(`/admin/quizzes/${prova.id}/`, {
             method: "PATCH",
             token: access,
@@ -382,7 +392,10 @@ export function CursoConteudoPage() {
         setEditQuizId(null);
         await recarregarProva();
       } else {
-        if (moduloSel == null) return;
+        if (moduloSel == null) {
+          setErro("Selecione um módulo antes de salvar a atividade.");
+          return;
+        }
         if (editQuizId != null) {
           await apiRequest(`/admin/quizzes/${editQuizId}/`, {
             method: "PATCH",
@@ -929,9 +942,9 @@ export function CursoConteudoPage() {
                 className="btn btn--primary btn--small"
                 onClick={() => abrirModalQuiz("prova", prova)}
               >
-                {prova ? "Editar prova" : "Nova prova"}
+                {quizValido(prova) ? "Editar prova" : "Nova prova"}
               </button>
-              {prova && (
+              {quizValido(prova) && (
                 <button
                   type="button"
                   className="btn btn--ghost btn--small"
@@ -942,13 +955,13 @@ export function CursoConteudoPage() {
               )}
             </div>
           </header>
-          {!prova && (
+          {!quizValido(prova) && (
             <p className="page-lead">
               Nenhuma prova cadastrada. Sem prova, o certificado usa o fluxo legado (quizzes de
               aula, se houver).
             </p>
           )}
-          {prova && (
+          {quizValido(prova) && (
             <div className="conteudo-cascade__quiz-body">
               <p className="page-lead">
                 {prova.titulo} — nota mín. {prova.nota_minima}%
@@ -1121,7 +1134,7 @@ export function CursoConteudoPage() {
         aberto={modalQuiz}
         titulo={
           quizEditorAlvo === "prova"
-            ? prova && editQuizId
+            ? editQuizId
               ? "Editar prova"
               : "Nova prova"
             : editQuizId
@@ -1134,6 +1147,7 @@ export function CursoConteudoPage() {
         }}
       >
         <form className="form-grid" onSubmit={salvarQuiz}>
+          {erro && <p className="form-erro">{erro}</p>}
           <label>
             Título
             <input

@@ -20,16 +20,20 @@ Progresso do aluno: `ProgressoAula` (não editado no painel nesta fase).
 
 Regra `.cursor/rules/painel-crud.mdc`: tabela + modal Novo/Editar + Excluir.
 
-- Lista cursos: ação **Conteúdo** → `/painel/cursos/:id/conteudo`
-- Página: tabela módulos; ao selecionar, tabela aulas; ao selecionar aula: materiais + quiz
+- Lista cursos: filtros `q`/`ativo`/`subcategoria_id`; ação **Conteúdo** → `/painel/cursos/:id/conteudo`
+- Página conteúdo: layout 2 colunas; breadcrumb; URL `?modulo=&aula=`
+- Soft-delete: DELETE módulo/aula/material/quiz → `ativo=false` (listas default só ativos)
+- Quiz soft-deletado: POST na mesma aula **reativa** em vez de 400
 - Aulas/materiais: modal com `FormData` via `apiFormData`
+- Alternativas: criar e editar via modal (`PATCH /admin/alternativas/{id}/`)
 
 ## APIs admin (PR+)
 
-- `GET/POST /api/admin/cursos/{id}/modulos/`
-- `PATCH/DELETE /api/admin/modulos/{id}/`
-- `GET/POST /api/admin/modulos/{id}/aulas/` (multipart)
-- `PATCH/DELETE /api/admin/aulas/{id}/`
+- `GET/POST /api/admin/cursos/` — GET aceita `q`, `ativo`, `subcategoria_id`; lista com `modulos_count` / `planos_nomes`
+- `GET/POST /api/admin/cursos/{id}/modulos/` — GET: `?incluir_inativos=1`
+- `PATCH/DELETE /api/admin/modulos/{id}/` — DELETE soft
+- `GET/POST /api/admin/modulos/{id}/aulas/` (multipart) — GET: `?incluir_inativos=1`
+- `PATCH/DELETE /api/admin/aulas/{id}/` — DELETE soft
 - `GET/POST /api/admin/aulas/{id}/materiais/`
 - `GET/POST /api/admin/aulas/{id}/quiz/` + perguntas/alternativas
 

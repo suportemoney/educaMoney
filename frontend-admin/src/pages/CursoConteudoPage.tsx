@@ -1,8 +1,9 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   apiFormData,
   apiRequest,
+  type AlternativaAdmin,
   type AulaAdmin,
   type Curso,
   type MaterialAula,
@@ -34,6 +35,8 @@ const altVazia = { texto: "", correta: false, ordem: 0 };
 
 export function CursoConteudoPage() {
   const { cursoId } = useParams<{ cursoId: string }>();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { access } = useAuth();
   const [curso, setCurso] = useState<Curso | null>(null);
   const [modulos, setModulos] = useState<Modulo[]>([]);
@@ -43,6 +46,7 @@ export function CursoConteudoPage() {
   const [materiais, setMateriais] = useState<MaterialAula[]>([]);
   const [quiz, setQuiz] = useState<QuizAdmin | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [urlPronta, setUrlPronta] = useState(false);
 
   const [modalModulo, setModalModulo] = useState(false);
   const [editModulo, setEditModulo] = useState<Modulo | null>(null);
@@ -65,9 +69,50 @@ export function CursoConteudoPage() {
 
   const [modalAlt, setModalAlt] = useState(false);
   const [pergAltId, setPergAltId] = useState<number | null>(null);
+  const [editAlt, setEditAlt] = useState<AlternativaAdmin | null>(null);
   const [formAlt, setFormAlt] = useState(altVazia);
 
   const [salvando, setSalvando] = useState(false);
+
+  const moduloAtual = useMemo(
+    () => modulos.find((m) => m.id === moduloSel) || null,
+    [modulos, moduloSel]
+  );
+  const aulaAtual = useMemo(
+    () => aulas.find((a) => a.id === aulaSel) || null,
+    [aulas, aulaSel]
+  );
+
+  const quizAvisos = useMemo(() => {
+    if (!quiz) return [] as string[];
+    const avisos: string[] = [];
+    const pergs = quiz.perguntas || [];
+    if (!pergs.length) avisos.push("Quiz sem perguntas.");
+    else if (pergs.some((p) => !(p.alternativas || []).some((a) => a.correta))) {
+      avisos.push("Há pergunta sem alternativa correta (gabarito).");
+    }
+    return avisos;
+  }, [quiz]);
+
+  function syncUrl(mid: number | null, aid: number | null) {
+    if (!cursoId) return;
+    const params = new URLSearchParams();
+    if (mid != null) params.set("modulo", String(mid));
+    if (aid != null) params.set("aula", String(aid));
+    const qs = params.toString();
+    navigate(`/cursos/${cursoId}/conteudo${qs ? `?${qs}` : ""}`, { replace: true });
+  }
+
+  function selecionarModulo(id: number) {
+    setModuloSel(id);
+    setAulaSel(null);
+    syncUrl(id, null);
+  }
+
+  function selecionarAula(id: number) {
+    setAulaSel(id);
+    syncUrl(moduloSel, id);
+  }
 
   async function carregarCursoEModulos() {
     if (!access || !cursoId) return;
@@ -78,9 +123,19 @@ export function CursoConteudoPage() {
     ]);
     setCurso(c);
     setModulos(m);
-    if (m.length && (moduloSel === null || !m.some((x) => x.id === moduloSel))) {
-      setModuloSel(m[0].id);
+
+    const midQ = Number(searchParams.get("modulo") || "") || null;
+    const aidQ = Number(searchParams.get("aula") || "") || null;
+    let mid = midQ && m.some((x) => x.id === midQ) ? midQ : null;
+    if (mid == null && m.length) mid = m[0].id;
+    setModuloSel(mid);
+    // aula será resolvida após carregar aulas
+    if (mid != null && aidQ) {
+      setAulaSel(aidQ);
+    } else if (mid == null) {
+      setAulaSel(null);
     }
+    setUrlPronta(true);
   }
 
   async function carregarAulas(mid: number) {
@@ -89,10 +144,17 @@ export function CursoConteudoPage() {
       token: access,
     });
     setAulas(list);
-    if (list.length && (aulaSel === null || !list.some((x) => x.id === aulaSel))) {
-      setAulaSel(list[0].id);
-    }
-    if (!list.length) setAulaSel(null);
+    const aidQ = Number(searchParams.get("aula") || "") || null;
+    let aid =
+      aulaSel != null && list.some((x) => x.id === aulaSel)
+        ? aulaSel
+        : aidQ && list.some((x) => x.id === aidQ)
+          ? aidQ
+          : list.length
+            ? list[0].id
+            : null;
+    setAulaSel(aid);
+    if (urlPronta) syncUrl(mid, aid);
   }
 
   async function carregarAulaExtra(aid: number) {
@@ -101,7 +163,7 @@ export function CursoConteudoPage() {
       apiRequest<MaterialAula[]>(`/admin/aulas/${aid}/materiais/`, { token: access }),
       apiRequest<QuizAdmin | null>(`/admin/aulas/${aid}/quiz/`, { token: access }),
     ]);
-    setMateriais(mats.filter((m) => m.ativo !== false));
+    setMateriais(mats);
     setQuiz(q);
   }
 
@@ -168,9 +230,13 @@ export function CursoConteudoPage() {
   }
 
   async function excluirModulo(m: Modulo) {
-    if (!access || !confirm(`Excluir o módulo "${m.titulo}" e suas aulas?`)) return;
+    if (!access || !confirm(`Excluir (inativar) o módulo "${m.titulo}"?`)) return;
     await apiRequest(`/admin/modulos/${m.id}/`, { method: "DELETE", token: access });
-    if (moduloSel === m.id) setModuloSel(null);
+    if (moduloSel === m.id) {
+      setModuloSel(null);
+      setAulaSel(null);
+      syncUrl(null, null);
+    }
     await carregarCursoEModulos();
   }
 
@@ -231,9 +297,12 @@ export function CursoConteudoPage() {
   }
 
   async function excluirAula(a: AulaAdmin) {
-    if (!access || !confirm(`Excluir a aula "${a.titulo}"?`)) return;
+    if (!access || !confirm(`Excluir (inativar) a aula "${a.titulo}"?`)) return;
     await apiRequest(`/admin/aulas/${a.id}/`, { method: "DELETE", token: access });
-    if (aulaSel === a.id) setAulaSel(null);
+    if (aulaSel === a.id) {
+      setAulaSel(null);
+      syncUrl(moduloSel, null);
+    }
     if (moduloSel != null) await carregarAulas(moduloSel);
   }
 
@@ -349,12 +418,21 @@ export function CursoConteudoPage() {
     if (!access || pergAltId == null) return;
     setSalvando(true);
     try {
-      await apiRequest(`/admin/perguntas/${pergAltId}/alternativas/`, {
-        method: "POST",
-        token: access,
-        body: formAlt,
-      });
+      if (editAlt) {
+        await apiRequest(`/admin/alternativas/${editAlt.id}/`, {
+          method: "PATCH",
+          token: access,
+          body: formAlt,
+        });
+      } else {
+        await apiRequest(`/admin/perguntas/${pergAltId}/alternativas/`, {
+          method: "POST",
+          token: access,
+          body: formAlt,
+        });
+      }
       setModalAlt(false);
+      setEditAlt(null);
       if (aulaSel != null) await carregarAulaExtra(aulaSel);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Falha ao salvar alternativa");
@@ -371,329 +449,460 @@ export function CursoConteudoPage() {
 
   return (
     <div>
+      <nav className="breadcrumb" aria-label="Navegação">
+        <Link to="/cursos">Cursos</Link>
+        <span className="breadcrumb__sep">›</span>
+        <span>{curso?.titulo || "…"}</span>
+        {moduloAtual && (
+          <>
+            <span className="breadcrumb__sep">›</span>
+            <span>{moduloAtual.titulo}</span>
+          </>
+        )}
+        {aulaAtual && (
+          <>
+            <span className="breadcrumb__sep">›</span>
+            <span>{aulaAtual.titulo}</span>
+          </>
+        )}
+      </nav>
+
       <div className="page-head">
         <div>
-          <Link to="/cursos" className="btn btn--ghost btn--small">
-            ← Cursos
-          </Link>
-          <h1 style={{ marginTop: "0.75rem" }}>
-            Conteúdo{curso ? `: ${curso.titulo}` : ""}
-          </h1>
+          <h1>Conteúdo{curso ? `: ${curso.titulo}` : ""}</h1>
         </div>
         <button type="button" className="btn btn--primary btn--small" onClick={abrirNovoModulo}>
           Novo módulo
         </button>
       </div>
       <p className="page-lead">
-        Módulos, aulas (vídeo), materiais e quizzes. Vídeo até 500&nbsp;MB; materiais até 50&nbsp;MB.
+        Selecione módulo e aula à esquerda. Materiais e quiz ficam à direita. Vídeo até
+        500&nbsp;MB; materiais até 50&nbsp;MB.
       </p>
       {erro && <p className="form-erro">{erro}</p>}
 
-      <div className="table-wrap">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Módulo</th>
-              <th>Ordem</th>
-              <th>Ativo</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {modulos.map((m) => (
-              <tr
-                key={m.id}
-                className={moduloSel === m.id ? "row-selected" : undefined}
-                onClick={() => setModuloSel(m.id)}
-                style={{ cursor: "pointer" }}
-              >
-                <td>{m.titulo}</td>
-                <td>{m.ordem}</td>
-                <td>{m.ativo ? "Sim" : "Não"}</td>
-                <td className="td-actions" onClick={(e) => e.stopPropagation()}>
-                  <button type="button" className="btn btn--ghost btn--small" onClick={() => abrirEditarModulo(m)}>
-                    Editar
-                  </button>
-                  <button type="button" className="btn btn--ghost btn--small" onClick={() => excluirModulo(m)}>
-                    Excluir
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {modulos.length === 0 && (
-              <tr>
-                <td colSpan={4}>Nenhum módulo. Clique em Novo módulo.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {moduloSel != null && (
-        <>
-          <div className="page-head" style={{ marginTop: "1.5rem" }}>
-            <h2>Aulas do módulo</h2>
-            <button type="button" className="btn btn--primary btn--small" onClick={abrirNovaAula}>
-              Nova aula
-            </button>
-          </div>
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Título</th>
-                  <th>Vídeo</th>
-                  <th>Ordem</th>
-                  <th>Ativo</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {aulas.map((a) => (
-                  <tr
-                    key={a.id}
-                    className={aulaSel === a.id ? "row-selected" : undefined}
-                    onClick={() => setAulaSel(a.id)}
-                    style={{ cursor: "pointer" }}
-                  >
-                    <td>{a.titulo}</td>
-                    <td>{a.video_url ? "Sim" : "—"}</td>
-                    <td>{a.ordem}</td>
-                    <td>{a.ativo ? "Sim" : "Não"}</td>
-                    <td className="td-actions" onClick={(e) => e.stopPropagation()}>
-                      <button type="button" className="btn btn--ghost btn--small" onClick={() => abrirEditarAula(a)}>
-                        Editar
-                      </button>
-                      <button type="button" className="btn btn--ghost btn--small" onClick={() => excluirAula(a)}>
-                        Excluir
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {aulas.length === 0 && (
-                  <tr>
-                    <td colSpan={5}>Nenhuma aula neste módulo.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
-
-      {aulaSel != null && (
-        <>
-          <div className="page-head" style={{ marginTop: "1.5rem" }}>
-            <h2>Materiais da aula</h2>
-            <button
-              type="button"
-              className="btn btn--primary btn--small"
-              onClick={() => {
-                setEditMat(null);
-                setFormMat(matVazio);
-                setModalMat(true);
-              }}
-            >
-              Novo material
-            </button>
-          </div>
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Título</th>
-                  <th>Arquivo</th>
-                  <th>Ordem</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {materiais.map((m) => (
-                  <tr key={m.id}>
-                    <td>{m.titulo}</td>
-                    <td>
-                      {m.arquivo_url ? (
-                        <a href={m.arquivo_url} target="_blank" rel="noreferrer">
-                          Abrir
-                        </a>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td>{m.ordem}</td>
-                    <td className="td-actions">
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--small"
-                        onClick={() => {
-                          setEditMat(m);
-                          setFormMat({
-                            titulo: m.titulo,
-                            ordem: m.ordem,
-                            ativo: m.ativo,
-                            arquivo: null,
-                          });
-                          setModalMat(true);
-                        }}
-                      >
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--small"
-                        onClick={() => excluirMaterial(m)}
-                      >
-                        Excluir
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {materiais.length === 0 && (
-                  <tr>
-                    <td colSpan={4}>Nenhum material.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="page-head" style={{ marginTop: "1.5rem" }}>
-            <h2>Quiz da aula</h2>
-            <div style={{ display: "flex", gap: "0.5rem" }}>
-              <button
-                type="button"
-                className="btn btn--primary btn--small"
-                onClick={() => {
-                  setFormQuiz(
-                    quiz
-                      ? {
-                          titulo: quiz.titulo,
-                          nota_minima: quiz.nota_minima,
-                          bloqueia_proxima: quiz.bloqueia_proxima,
-                          ativo: quiz.ativo,
-                        }
-                      : quizVazio
-                  );
-                  setModalQuiz(true);
-                }}
-              >
-                {quiz ? "Editar quiz" : "Novo quiz"}
-              </button>
-              {quiz && (
-                <button type="button" className="btn btn--ghost btn--small" onClick={excluirQuiz}>
-                  Excluir
-                </button>
-              )}
+      <div className="conteudo-layout">
+        <div className="conteudo-layout__left">
+          <section className="conteudo-panel">
+            <div className="page-head">
+              <h2>Módulos</h2>
             </div>
-          </div>
-          {quiz && (
-            <>
-              <p className="page-lead">
-                {quiz.titulo} — nota mín. {quiz.nota_minima}%
-                {quiz.bloqueia_proxima ? " · bloqueia próxima" : ""}
-              </p>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Módulo</th>
+                    <th>Ord.</th>
+                    <th>Status</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {modulos.map((m) => (
+                    <tr
+                      key={m.id}
+                      className={moduloSel === m.id ? "row-selected" : undefined}
+                      onClick={() => selecionarModulo(m.id)}
+                    >
+                      <td>{m.titulo}</td>
+                      <td>{m.ordem}</td>
+                      <td>
+                        <span className={`badge ${m.ativo ? "badge--ok" : "badge--off"}`}>
+                          {m.ativo ? "Ativo" : "Off"}
+                        </span>
+                      </td>
+                      <td className="td-actions" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--small"
+                          onClick={() => abrirEditarModulo(m)}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--small"
+                          onClick={() => excluirModulo(m)}
+                        >
+                          Excluir
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {modulos.length === 0 && (
+                    <tr>
+                      <td colSpan={4}>
+                        Nenhum módulo.{" "}
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--small"
+                          onClick={abrirNovoModulo}
+                        >
+                          Novo módulo
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {moduloSel != null && (
+            <section className="conteudo-panel">
               <div className="page-head">
-                <h3>Perguntas</h3>
+                <h2>Aulas</h2>
                 <button
                   type="button"
                   className="btn btn--primary btn--small"
-                  onClick={() => {
-                    setEditPerg(null);
-                    setFormPerg(perguntaVazia);
-                    setModalPerg(true);
-                  }}
+                  onClick={abrirNovaAula}
                 >
-                  Nova pergunta
+                  Nova aula
                 </button>
               </div>
               <div className="table-wrap">
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th>Enunciado</th>
-                      <th>Alternativas</th>
+                      <th>Título</th>
+                      <th>Vídeo</th>
+                      <th>Status</th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(quiz.perguntas || []).map((p) => (
-                      <tr key={p.id}>
-                        <td>{p.enunciado}</td>
+                    {aulas.map((a) => (
+                      <tr
+                        key={a.id}
+                        className={aulaSel === a.id ? "row-selected" : undefined}
+                        onClick={() => selecionarAula(a.id)}
+                      >
+                        <td>{a.titulo}</td>
+                        <td>{a.video_url ? "Sim" : "—"}</td>
                         <td>
-                          <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
-                            {(p.alternativas || []).map((a) => (
-                              <li key={a.id}>
-                                {a.texto}
-                                {a.correta ? " ✓" : ""}{" "}
-                                <button
-                                  type="button"
-                                  className="btn btn--ghost btn--small"
-                                  onClick={() => excluirAlt(a.id)}
-                                >
-                                  ×
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                          <button
-                            type="button"
-                            className="btn btn--ghost btn--small"
-                            onClick={() => {
-                              setPergAltId(p.id);
-                              setFormAlt(altVazia);
-                              setModalAlt(true);
-                            }}
-                          >
-                            + Alternativa
-                          </button>
+                          <span className={`badge ${a.ativo ? "badge--ok" : "badge--off"}`}>
+                            {a.ativo ? "Ativo" : "Off"}
+                          </span>
                         </td>
-                        <td className="td-actions">
+                        <td className="td-actions" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
                             className="btn btn--ghost btn--small"
-                            onClick={() => {
-                              setEditPerg(p);
-                              setFormPerg({ enunciado: p.enunciado, ordem: p.ordem });
-                              setModalPerg(true);
-                            }}
+                            onClick={() => abrirEditarAula(a)}
                           >
                             Editar
                           </button>
                           <button
                             type="button"
                             className="btn btn--ghost btn--small"
-                            onClick={() => excluirPergunta(p)}
+                            onClick={() => excluirAula(a)}
                           >
                             Excluir
                           </button>
                         </td>
                       </tr>
                     ))}
-                    {(quiz.perguntas || []).length === 0 && (
+                    {aulas.length === 0 && (
                       <tr>
-                        <td colSpan={3}>Nenhuma pergunta.</td>
+                        <td colSpan={4}>
+                          Nenhuma aula.{" "}
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--small"
+                            onClick={abrirNovaAula}
+                          >
+                            Nova aula
+                          </button>
+                        </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
               </div>
+            </section>
+          )}
+        </div>
+
+        <div className="conteudo-layout__right">
+          {aulaSel == null ? (
+            <div className="placeholder-box">
+              Selecione uma aula para gerenciar materiais e quiz.
+            </div>
+          ) : (
+            <>
+              <section className="conteudo-panel">
+                <div className="page-head">
+                  <h2>Materiais</h2>
+                  <button
+                    type="button"
+                    className="btn btn--primary btn--small"
+                    onClick={() => {
+                      setEditMat(null);
+                      setFormMat(matVazio);
+                      setModalMat(true);
+                    }}
+                  >
+                    Novo material
+                  </button>
+                </div>
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Título</th>
+                        <th>Arquivo</th>
+                        <th>Status</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {materiais.map((m) => (
+                        <tr key={m.id}>
+                          <td>{m.titulo}</td>
+                          <td>
+                            {m.arquivo_url ? (
+                              <a href={m.arquivo_url} target="_blank" rel="noreferrer">
+                                Abrir
+                              </a>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                          <td>
+                            <span className={`badge ${m.ativo ? "badge--ok" : "badge--off"}`}>
+                              {m.ativo ? "Ativo" : "Off"}
+                            </span>
+                          </td>
+                          <td className="td-actions">
+                            <button
+                              type="button"
+                              className="btn btn--ghost btn--small"
+                              onClick={() => {
+                                setEditMat(m);
+                                setFormMat({
+                                  titulo: m.titulo,
+                                  ordem: m.ordem,
+                                  ativo: m.ativo,
+                                  arquivo: null,
+                                });
+                                setModalMat(true);
+                              }}
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn--ghost btn--small"
+                              onClick={() => excluirMaterial(m)}
+                            >
+                              Excluir
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {materiais.length === 0 && (
+                        <tr>
+                          <td colSpan={4}>Nenhum material nesta aula.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section className="conteudo-panel">
+                <div className="page-head">
+                  <h2>Quiz</h2>
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <button
+                      type="button"
+                      className="btn btn--primary btn--small"
+                      onClick={() => {
+                        setFormQuiz(
+                          quiz
+                            ? {
+                                titulo: quiz.titulo,
+                                nota_minima: quiz.nota_minima,
+                                bloqueia_proxima: quiz.bloqueia_proxima,
+                                ativo: quiz.ativo,
+                              }
+                            : quizVazio
+                        );
+                        setModalQuiz(true);
+                      }}
+                    >
+                      {quiz ? "Editar quiz" : "Novo quiz"}
+                    </button>
+                    {quiz && (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--small"
+                        onClick={excluirQuiz}
+                      >
+                        Excluir
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {!quiz && <p className="page-lead">Nenhum quiz ativo nesta aula.</p>}
+                {quiz && (
+                  <>
+                    <p className="page-lead">
+                      {quiz.titulo} — nota mín. {quiz.nota_minima}%
+                      {quiz.bloqueia_proxima ? " · bloqueia próxima" : ""}
+                    </p>
+                    {quizAvisos.map((a) => (
+                      <p key={a} className="form-erro">
+                        {a}
+                      </p>
+                    ))}
+                    <div className="page-head">
+                      <h3>Perguntas</h3>
+                      <button
+                        type="button"
+                        className="btn btn--primary btn--small"
+                        onClick={() => {
+                          setEditPerg(null);
+                          setFormPerg(perguntaVazia);
+                          setModalPerg(true);
+                        }}
+                      >
+                        Nova pergunta
+                      </button>
+                    </div>
+                    <div className="table-wrap">
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>Enunciado</th>
+                            <th>Alternativas</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(quiz.perguntas || []).map((p) => (
+                            <tr key={p.id}>
+                              <td>{p.enunciado}</td>
+                              <td>
+                                <ul className="alt-list">
+                                  {(p.alternativas || []).map((a) => (
+                                    <li key={a.id}>
+                                      {a.texto}{" "}
+                                      {a.correta && (
+                                        <span className="badge badge--ok">correta</span>
+                                      )}{" "}
+                                      <button
+                                        type="button"
+                                        className="btn btn--ghost btn--small"
+                                        onClick={() => {
+                                          setPergAltId(p.id);
+                                          setEditAlt(a);
+                                          setFormAlt({
+                                            texto: a.texto,
+                                            correta: a.correta,
+                                            ordem: a.ordem,
+                                          });
+                                          setModalAlt(true);
+                                        }}
+                                      >
+                                        Editar
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="btn btn--ghost btn--small"
+                                        onClick={() => excluirAlt(a.id)}
+                                      >
+                                        ×
+                                      </button>
+                                    </li>
+                                  ))}
+                                </ul>
+                                <button
+                                  type="button"
+                                  className="btn btn--ghost btn--small"
+                                  onClick={() => {
+                                    setPergAltId(p.id);
+                                    setEditAlt(null);
+                                    setFormAlt(altVazia);
+                                    setModalAlt(true);
+                                  }}
+                                >
+                                  + Alternativa
+                                </button>
+                              </td>
+                              <td className="td-actions">
+                                <button
+                                  type="button"
+                                  className="btn btn--ghost btn--small"
+                                  onClick={() => {
+                                    setEditPerg(p);
+                                    setFormPerg({
+                                      enunciado: p.enunciado,
+                                      ordem: p.ordem,
+                                    });
+                                    setModalPerg(true);
+                                  }}
+                                >
+                                  Editar
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn--ghost btn--small"
+                                  onClick={() => excluirPergunta(p)}
+                                >
+                                  Excluir
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                          {(quiz.perguntas || []).length === 0 && (
+                            <tr>
+                              <td colSpan={3}>Nenhuma pergunta.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </section>
             </>
           )}
-        </>
-      )}
+        </div>
+      </div>
 
-      <Modal aberto={modalModulo} titulo={editModulo ? "Editar módulo" : "Novo módulo"} onFechar={() => setModalModulo(false)}>
+      <Modal
+        aberto={modalModulo}
+        titulo={editModulo ? "Editar módulo" : "Novo módulo"}
+        onFechar={() => setModalModulo(false)}
+      >
         <form className="form-grid" onSubmit={salvarModulo}>
           <label>
             Título
-            <input value={formModulo.titulo} onChange={(e) => setFormModulo({ ...formModulo, titulo: e.target.value })} required />
+            <input
+              value={formModulo.titulo}
+              onChange={(e) => setFormModulo({ ...formModulo, titulo: e.target.value })}
+              required
+            />
           </label>
           <label>
             Ordem
-            <input type="number" value={formModulo.ordem} onChange={(e) => setFormModulo({ ...formModulo, ordem: Number(e.target.value) })} />
+            <input
+              type="number"
+              value={formModulo.ordem}
+              onChange={(e) =>
+                setFormModulo({ ...formModulo, ordem: Number(e.target.value) })
+              }
+            />
           </label>
           <label className="check-row">
-            <input type="checkbox" checked={formModulo.ativo} onChange={(e) => setFormModulo({ ...formModulo, ativo: e.target.checked })} />
+            <input
+              type="checkbox"
+              checked={formModulo.ativo}
+              onChange={(e) =>
+                setFormModulo({ ...formModulo, ativo: e.target.checked })
+              }
+            />
             Ativo
           </label>
           <button className="btn btn--primary" type="submit" disabled={salvando}>
@@ -702,22 +911,36 @@ export function CursoConteudoPage() {
         </form>
       </Modal>
 
-      <Modal aberto={modalAula} titulo={editAula ? "Editar aula" : "Nova aula"} onFechar={() => setModalAula(false)}>
+      <Modal
+        aberto={modalAula}
+        titulo={editAula ? "Editar aula" : "Nova aula"}
+        onFechar={() => setModalAula(false)}
+      >
         <form className="form-grid" onSubmit={salvarAula}>
           <label>
             Título
-            <input value={formAula.titulo} onChange={(e) => setFormAula({ ...formAula, titulo: e.target.value })} required />
+            <input
+              value={formAula.titulo}
+              onChange={(e) => setFormAula({ ...formAula, titulo: e.target.value })}
+              required
+            />
           </label>
           <label>
             Descrição
-            <textarea value={formAula.descricao} onChange={(e) => setFormAula({ ...formAula, descricao: e.target.value })} rows={3} />
+            <textarea
+              value={formAula.descricao}
+              onChange={(e) => setFormAula({ ...formAula, descricao: e.target.value })}
+              rows={3}
+            />
           </label>
           <label>
             Vídeo (.mp4 / .webm)
             <input
               type="file"
               accept="video/mp4,video/webm,.mp4,.webm"
-              onChange={(e) => setFormAula({ ...formAula, videoFile: e.target.files?.[0] ?? null })}
+              onChange={(e) =>
+                setFormAula({ ...formAula, videoFile: e.target.files?.[0] ?? null })
+              }
             />
           </label>
           <label>
@@ -735,10 +958,20 @@ export function CursoConteudoPage() {
           </label>
           <label>
             Ordem
-            <input type="number" value={formAula.ordem} onChange={(e) => setFormAula({ ...formAula, ordem: Number(e.target.value) })} />
+            <input
+              type="number"
+              value={formAula.ordem}
+              onChange={(e) =>
+                setFormAula({ ...formAula, ordem: Number(e.target.value) })
+              }
+            />
           </label>
           <label className="check-row">
-            <input type="checkbox" checked={formAula.ativo} onChange={(e) => setFormAula({ ...formAula, ativo: e.target.checked })} />
+            <input
+              type="checkbox"
+              checked={formAula.ativo}
+              onChange={(e) => setFormAula({ ...formAula, ativo: e.target.checked })}
+            />
             Ativo
           </label>
           <button className="btn btn--primary" type="submit" disabled={salvando}>
@@ -747,24 +980,48 @@ export function CursoConteudoPage() {
         </form>
       </Modal>
 
-      <Modal aberto={modalMat} titulo={editMat ? "Editar material" : "Novo material"} onFechar={() => setModalMat(false)}>
+      <Modal
+        aberto={modalMat}
+        titulo={editMat ? "Editar material" : "Novo material"}
+        onFechar={() => setModalMat(false)}
+      >
         <form className="form-grid" onSubmit={salvarMaterial}>
           <label>
             Título
-            <input value={formMat.titulo} onChange={(e) => setFormMat({ ...formMat, titulo: e.target.value })} required />
+            <input
+              value={formMat.titulo}
+              onChange={(e) => setFormMat({ ...formMat, titulo: e.target.value })}
+              required
+            />
           </label>
           <label>
             Arquivo (pdf/zip/imagem)
             <input
               type="file"
               accept=".pdf,.zip,.png,.jpg,.jpeg,.webp"
-              onChange={(e) => setFormMat({ ...formMat, arquivo: e.target.files?.[0] ?? null })}
+              onChange={(e) =>
+                setFormMat({ ...formMat, arquivo: e.target.files?.[0] ?? null })
+              }
               required={!editMat}
             />
           </label>
           <label>
             Ordem
-            <input type="number" value={formMat.ordem} onChange={(e) => setFormMat({ ...formMat, ordem: Number(e.target.value) })} />
+            <input
+              type="number"
+              value={formMat.ordem}
+              onChange={(e) =>
+                setFormMat({ ...formMat, ordem: Number(e.target.value) })
+              }
+            />
+          </label>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={formMat.ativo}
+              onChange={(e) => setFormMat({ ...formMat, ativo: e.target.checked })}
+            />
+            Ativo
           </label>
           <button className="btn btn--primary" type="submit" disabled={salvando}>
             {salvando ? "Salvando…" : "Salvar"}
@@ -772,11 +1029,19 @@ export function CursoConteudoPage() {
         </form>
       </Modal>
 
-      <Modal aberto={modalQuiz} titulo={quiz ? "Editar quiz" : "Novo quiz"} onFechar={() => setModalQuiz(false)}>
+      <Modal
+        aberto={modalQuiz}
+        titulo={quiz ? "Editar quiz" : "Novo quiz"}
+        onFechar={() => setModalQuiz(false)}
+      >
         <form className="form-grid" onSubmit={salvarQuiz}>
           <label>
             Título
-            <input value={formQuiz.titulo} onChange={(e) => setFormQuiz({ ...formQuiz, titulo: e.target.value })} required />
+            <input
+              value={formQuiz.titulo}
+              onChange={(e) => setFormQuiz({ ...formQuiz, titulo: e.target.value })}
+              required
+            />
           </label>
           <label>
             Nota mínima (%)
@@ -785,19 +1050,27 @@ export function CursoConteudoPage() {
               min={0}
               max={100}
               value={formQuiz.nota_minima}
-              onChange={(e) => setFormQuiz({ ...formQuiz, nota_minima: Number(e.target.value) })}
+              onChange={(e) =>
+                setFormQuiz({ ...formQuiz, nota_minima: Number(e.target.value) })
+              }
             />
           </label>
           <label className="check-row">
             <input
               type="checkbox"
               checked={formQuiz.bloqueia_proxima}
-              onChange={(e) => setFormQuiz({ ...formQuiz, bloqueia_proxima: e.target.checked })}
+              onChange={(e) =>
+                setFormQuiz({ ...formQuiz, bloqueia_proxima: e.target.checked })
+              }
             />
             Bloqueia próxima aula se reprovado
           </label>
           <label className="check-row">
-            <input type="checkbox" checked={formQuiz.ativo} onChange={(e) => setFormQuiz({ ...formQuiz, ativo: e.target.checked })} />
+            <input
+              type="checkbox"
+              checked={formQuiz.ativo}
+              onChange={(e) => setFormQuiz({ ...formQuiz, ativo: e.target.checked })}
+            />
             Ativo
           </label>
           <button className="btn btn--primary" type="submit" disabled={salvando}>
@@ -806,15 +1079,30 @@ export function CursoConteudoPage() {
         </form>
       </Modal>
 
-      <Modal aberto={modalPerg} titulo={editPerg ? "Editar pergunta" : "Nova pergunta"} onFechar={() => setModalPerg(false)}>
+      <Modal
+        aberto={modalPerg}
+        titulo={editPerg ? "Editar pergunta" : "Nova pergunta"}
+        onFechar={() => setModalPerg(false)}
+      >
         <form className="form-grid" onSubmit={salvarPergunta}>
           <label>
             Enunciado
-            <textarea value={formPerg.enunciado} onChange={(e) => setFormPerg({ ...formPerg, enunciado: e.target.value })} required rows={3} />
+            <textarea
+              value={formPerg.enunciado}
+              onChange={(e) => setFormPerg({ ...formPerg, enunciado: e.target.value })}
+              required
+              rows={3}
+            />
           </label>
           <label>
             Ordem
-            <input type="number" value={formPerg.ordem} onChange={(e) => setFormPerg({ ...formPerg, ordem: Number(e.target.value) })} />
+            <input
+              type="number"
+              value={formPerg.ordem}
+              onChange={(e) =>
+                setFormPerg({ ...formPerg, ordem: Number(e.target.value) })
+              }
+            />
           </label>
           <button className="btn btn--primary" type="submit" disabled={salvando}>
             {salvando ? "Salvando…" : "Salvar"}
@@ -822,19 +1110,40 @@ export function CursoConteudoPage() {
         </form>
       </Modal>
 
-      <Modal aberto={modalAlt} titulo="Nova alternativa" onFechar={() => setModalAlt(false)}>
+      <Modal
+        aberto={modalAlt}
+        titulo={editAlt ? "Editar alternativa" : "Nova alternativa"}
+        onFechar={() => {
+          setModalAlt(false);
+          setEditAlt(null);
+        }}
+      >
         <form className="form-grid" onSubmit={salvarAlt}>
           <label>
             Texto
-            <input value={formAlt.texto} onChange={(e) => setFormAlt({ ...formAlt, texto: e.target.value })} required />
+            <input
+              value={formAlt.texto}
+              onChange={(e) => setFormAlt({ ...formAlt, texto: e.target.value })}
+              required
+            />
           </label>
           <label className="check-row">
-            <input type="checkbox" checked={formAlt.correta} onChange={(e) => setFormAlt({ ...formAlt, correta: e.target.checked })} />
+            <input
+              type="checkbox"
+              checked={formAlt.correta}
+              onChange={(e) => setFormAlt({ ...formAlt, correta: e.target.checked })}
+            />
             Correta
           </label>
           <label>
             Ordem
-            <input type="number" value={formAlt.ordem} onChange={(e) => setFormAlt({ ...formAlt, ordem: Number(e.target.value) })} />
+            <input
+              type="number"
+              value={formAlt.ordem}
+              onChange={(e) =>
+                setFormAlt({ ...formAlt, ordem: Number(e.target.value) })
+              }
+            />
           </label>
           <button className="btn btn--primary" type="submit" disabled={salvando}>
             {salvando ? "Salvando…" : "Salvar"}

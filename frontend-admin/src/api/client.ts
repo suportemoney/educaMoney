@@ -40,6 +40,8 @@ export type Curso = {
   instrutor_id: number | null;
   instrutor_nome: string | null;
   plano_ids: number[];
+  planos_nomes?: string[];
+  modulos_count?: number;
   subcategoria_id: number | null;
   subcategoria_titulo?: string | null;
   categoria_titulo?: string | null;

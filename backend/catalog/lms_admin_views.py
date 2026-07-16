@@ -60,6 +60,8 @@ class AdminMaterialListCreateView(APIView):
     def get(self, request, aula_id):
         aula = get_object_or_404(Aula, pk=aula_id)
         qs = MaterialAula.objects.filter(aula=aula).order_by("ordem", "id")
+        if request.query_params.get("incluir_inativos") != "1":
+            qs = qs.filter(ativo=True)
         return Response(
             MaterialAulaSerializer(qs, many=True, context={"request": request}).data
         )
@@ -344,22 +346,35 @@ class AdminQuizByAulaView(APIView):
 
     def get(self, request, aula_id):
         aula = get_object_or_404(Aula, pk=aula_id)
-        quiz = Quiz.objects.filter(aula=aula).prefetch_related(
-            "perguntas__alternativas"
-        ).first()
+        quiz = (
+            Quiz.objects.filter(aula=aula, ativo=True)
+            .prefetch_related("perguntas__alternativas")
+            .first()
+        )
         if not quiz:
             return Response(None)
         return Response(QuizAdminSerializer(quiz).data)
 
     def post(self, request, aula_id):
         aula = get_object_or_404(Aula, pk=aula_id)
-        if Quiz.objects.filter(aula=aula).exists():
-            return Response(
-                {"detail": "Esta aula já possui quiz. Use PATCH."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        existente = Quiz.objects.filter(aula=aula).first()
         ser = QuizAdminSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
+        if existente:
+            if existente.ativo:
+                return Response(
+                    {"detail": "Esta aula já possui quiz. Use PATCH."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            # Reativa quiz soft-deletado em vez de bloquear
+            for campo, valor in ser.validated_data.items():
+                setattr(existente, campo, valor)
+            existente.ativo = True
+            existente.save()
+            quiz = Quiz.objects.prefetch_related("perguntas__alternativas").get(
+                pk=existente.pk
+            )
+            return Response(QuizAdminSerializer(quiz).data, status=status.HTTP_200_OK)
         quiz = Quiz.objects.create(aula=aula, **ser.validated_data)
         return Response(
             QuizAdminSerializer(quiz).data, status=status.HTTP_201_CREATED

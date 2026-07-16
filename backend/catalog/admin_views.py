@@ -2,6 +2,7 @@ import secrets
 import string
 
 from django.contrib.auth.models import User
+from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -26,6 +27,7 @@ from .serializers import (
     TokenKeyCreateSerializer,
     TokenKeySerializer,
 )
+from .soft_delete import soft_delete_ativo
 
 
 class AdminPlanoListCreateView(generics.ListCreateAPIView):
@@ -49,9 +51,34 @@ class AdminCursoListCreateView(generics.ListCreateAPIView):
     serializer_class = CursoAdminSerializer
     permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
-    queryset = Curso.objects.select_related(
-        "instrutor", "subcategoria", "subcategoria__categoria"
-    ).prefetch_related("planos")
+
+    def get_queryset(self):
+        qs = (
+            Curso.objects.select_related(
+                "instrutor", "subcategoria", "subcategoria__categoria"
+            )
+            .prefetch_related("planos")
+            .annotate(
+                modulos_count=Count(
+                    "modulos", filter=Q(modulos__ativo=True), distinct=True
+                )
+            )
+            .order_by("ordem", "id")
+        )
+        busca = (self.request.query_params.get("q") or "").strip()
+        if busca:
+            qs = qs.filter(
+                Q(titulo__icontains=busca) | Q(descricao__icontains=busca)
+            )
+        ativo = self.request.query_params.get("ativo")
+        if ativo == "1":
+            qs = qs.filter(ativo=True)
+        elif ativo == "0":
+            qs = qs.filter(ativo=False)
+        sub = (self.request.query_params.get("subcategoria_id") or "").strip()
+        if sub.isdigit():
+            qs = qs.filter(subcategoria_id=int(sub))
+        return qs
 
 
 class AdminCursoDetailView(generics.RetrieveUpdateAPIView):
@@ -133,6 +160,8 @@ class AdminModuloListCreateView(APIView):
     def get(self, request, curso_id):
         curso = get_object_or_404(Curso, pk=curso_id)
         qs = Modulo.objects.filter(curso=curso).order_by("ordem", "id")
+        if request.query_params.get("incluir_inativos") != "1":
+            qs = qs.filter(ativo=True)
         return Response(ModuloAdminSerializer(qs, many=True).data)
 
     def post(self, request, curso_id):
@@ -157,7 +186,7 @@ class AdminModuloDetailView(APIView):
 
     def delete(self, request, pk):
         modulo = get_object_or_404(Modulo, pk=pk)
-        modulo.delete()
+        soft_delete_ativo(modulo)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -168,6 +197,8 @@ class AdminAulaListCreateView(APIView):
     def get(self, request, modulo_id):
         modulo = get_object_or_404(Modulo, pk=modulo_id)
         qs = Aula.objects.filter(modulo=modulo).order_by("ordem", "id")
+        if request.query_params.get("incluir_inativos") != "1":
+            qs = qs.filter(ativo=True)
         return Response(
             AulaAdminSerializer(qs, many=True, context={"request": request}).data
         )
@@ -198,9 +229,7 @@ class AdminAulaDetailView(APIView):
 
     def delete(self, request, pk):
         aula = get_object_or_404(Aula, pk=pk)
-        if aula.video:
-            aula.video.delete(save=False)
-        aula.delete()
+        soft_delete_ativo(aula)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

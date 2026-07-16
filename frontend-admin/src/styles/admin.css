@@ -935,6 +935,91 @@ a {
   white-space: nowrap;
 }
 
+.table-thumb {
+  width: 48px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 0.3rem;
+  border: 1px solid var(--em-line);
+}
+
+.breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--em-muted);
+}
+
+.breadcrumb a {
+  color: var(--em-blue);
+  text-decoration: none;
+}
+
+.breadcrumb a:hover {
+  text-decoration: underline;
+}
+
+.breadcrumb__sep {
+  opacity: 0.6;
+}
+
+.conteudo-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.2fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .conteudo-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.conteudo-panel {
+  margin-bottom: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--em-line);
+  border-radius: 0.65rem;
+  background: rgba(10, 22, 40, 0.4);
+}
+
+.conteudo-panel .page-head {
+  margin-bottom: 0.65rem;
+}
+
+.conteudo-panel h2,
+.conteudo-panel h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.data-table tr.row-selected {
+  background: rgba(52, 211, 153, 0.12);
+  outline: 1px solid rgba(52, 211, 153, 0.35);
+}
+
+.data-table tr.row-selected td {
+  cursor: pointer;
+}
+
+.data-table tbody tr[class*="row-selected"],
+.data-table tbody tr:has(+ *) {
+  cursor: pointer;
+}
+
+.alt-list {
+  margin: 0 0 0.35rem;
+  padding-left: 1.1rem;
+}
+
+.alt-list li {
+  margin-bottom: 0.25rem;
+}
+
 .admin-loading {
   min-height: 100vh;
   display: grid;

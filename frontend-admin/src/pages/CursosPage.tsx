@@ -23,6 +23,13 @@ const vazio = {
   capaFile: null as File | null,
 };
 
+function truncarPlanos(nomes: string[] | undefined, ids: number[]): string {
+  const lista = nomes?.length ? nomes : ids.map((id) => `#${id}`);
+  if (!lista.length) return "—";
+  if (lista.length <= 2) return lista.join(", ");
+  return `${lista.slice(0, 2).join(", ")} +${lista.length - 2}`;
+}
+
 export function CursosPage() {
   const { access } = useAuth();
   const [itens, setItens] = useState<Curso[]>([]);
@@ -30,6 +37,9 @@ export function CursosPage() {
   const [instrutores, setInstrutores] = useState<User[]>([]);
   const [subs, setSubs] = useState<Subcategoria[]>([]);
   const [erro, setErro] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+  const [filtroAtivo, setFiltroAtivo] = useState("");
+  const [filtroSub, setFiltroSub] = useState("");
   const [modalAberto, setModalAberto] = useState(false);
   const [editando, setEditando] = useState<Curso | null>(null);
   const [form, setForm] = useState(vazio);
@@ -37,8 +47,13 @@ export function CursosPage() {
 
   async function carregar() {
     if (!access) return;
+    const params = new URLSearchParams();
+    if (q.trim()) params.set("q", q.trim());
+    if (filtroAtivo) params.set("ativo", filtroAtivo);
+    if (filtroSub) params.set("subcategoria_id", filtroSub);
+    const qs = params.toString();
     const [c, p, i, s] = await Promise.all([
-      apiRequest<Curso[]>("/admin/cursos/", { token: access }),
+      apiRequest<Curso[]>(`/admin/cursos/${qs ? `?${qs}` : ""}`, { token: access }),
       apiRequest<Plano[]>("/admin/planos/", { token: access }).catch(() =>
         apiRequest<Plano[]>("/public/planos/")
       ),
@@ -54,6 +69,8 @@ export function CursosPage() {
   useEffect(() => {
     carregar().catch((e: Error) => setErro(e.message));
   }, [access]);
+
+  const ativos = itens.filter((c) => c.ativo).length;
 
   function abrirNovo() {
     setEditando(null);
@@ -144,26 +161,103 @@ export function CursosPage() {
           Novo
         </button>
       </div>
-      <p className="page-lead">Associe planos e instrutor. Cursos ativos saem na landing.</p>
+      <p className="page-lead">
+        Associe planos e instrutor. Use Conteúdo para módulos, aulas, materiais e quizzes.
+      </p>
+      <div className="stat-chips">
+        <span className="stat-chip">
+          Total <strong>{itens.length}</strong>
+        </span>
+        <span className="stat-chip">
+          Ativos <strong>{ativos}</strong>
+        </span>
+      </div>
       {erro && <p className="form-erro">{erro}</p>}
+      <form
+        className="filter-bar"
+        onSubmit={(e) => {
+          e.preventDefault();
+          carregar().catch((err: Error) => setErro(err.message));
+        }}
+      >
+        <label>
+          Busca
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Título ou descrição…"
+          />
+        </label>
+        <label>
+          Status
+          <select value={filtroAtivo} onChange={(e) => setFiltroAtivo(e.target.value)}>
+            <option value="">Todos</option>
+            <option value="1">Ativos</option>
+            <option value="0">Inativos</option>
+          </select>
+        </label>
+        <label>
+          Subcategoria
+          <select value={filtroSub} onChange={(e) => setFiltroSub(e.target.value)}>
+            <option value="">Todas</option>
+            {subs.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.categoria_titulo} / {s.titulo}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="submit" className="btn btn--primary btn--small">
+          Filtrar
+        </button>
+      </form>
       <div className="table-wrap">
         <table className="data-table">
           <thead>
             <tr>
+              <th>Capa</th>
               <th>Título</th>
-              <th>Instrutor</th>
+              <th>Categoria</th>
               <th>Planos</th>
-              <th>Ativo</th>
+              <th>Módulos</th>
+              <th>Ordem</th>
+              <th>Status</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {itens.map((c) => (
               <tr key={c.id}>
-                <td>{c.titulo}</td>
-                <td>{c.instrutor_nome || "—"}</td>
-                <td>{(c.plano_ids || []).length}</td>
-                <td>{c.ativo ? "Sim" : "Não"}</td>
+                <td>
+                  {c.capa_url ? (
+                    <img src={c.capa_url} alt="" className="table-thumb" />
+                  ) : (
+                    "—"
+                  )}
+                </td>
+                <td>
+                  <strong>{c.titulo}</strong>
+                  {c.instrutor_nome ? (
+                    <div className="field-hint">{c.instrutor_nome}</div>
+                  ) : null}
+                </td>
+                <td>
+                  {c.categoria_titulo || c.subcategoria_titulo
+                    ? `${c.categoria_titulo || "—"}${
+                        c.subcategoria_titulo ? ` / ${c.subcategoria_titulo}` : ""
+                      }`
+                    : "—"}
+                </td>
+                <td title={(c.planos_nomes || []).join(", ")}>
+                  {truncarPlanos(c.planos_nomes, c.plano_ids || [])}
+                </td>
+                <td>{c.modulos_count ?? 0}</td>
+                <td>{c.ordem}</td>
+                <td>
+                  <span className={`badge ${c.ativo ? "badge--ok" : "badge--off"}`}>
+                    {c.ativo ? "Ativo" : "Inativo"}
+                  </span>
+                </td>
                 <td className="td-actions">
                   <Link
                     to={`/cursos/${c.id}/conteudo`}
@@ -171,17 +265,35 @@ export function CursosPage() {
                   >
                     Conteúdo
                   </Link>
-                  <button type="button" className="btn btn--ghost btn--small" onClick={() => abrirEditar(c)}>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--small"
+                    onClick={() => abrirEditar(c)}
+                  >
                     Editar
                   </button>
                   {c.ativo && (
-                    <button type="button" className="btn btn--ghost btn--small" onClick={() => excluir(c)}>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--small"
+                      onClick={() => excluir(c)}
+                    >
                       Excluir
                     </button>
                   )}
                 </td>
               </tr>
             ))}
+            {itens.length === 0 && (
+              <tr>
+                <td colSpan={8}>
+                  Nenhum curso encontrado.{" "}
+                  <button type="button" className="btn btn--ghost btn--small" onClick={abrirNovo}>
+                    Novo curso
+                  </button>
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

@@ -166,6 +166,8 @@ class CursoAdminSerializer(serializers.ModelSerializer):
     capa_url = serializers.SerializerMethodField(read_only=True)
     categoria_titulo = serializers.SerializerMethodField(read_only=True)
     subcategoria_titulo = serializers.SerializerMethodField(read_only=True)
+    planos_nomes = serializers.SerializerMethodField(read_only=True)
+    modulos_count = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Curso
@@ -178,6 +180,8 @@ class CursoAdminSerializer(serializers.ModelSerializer):
             "instrutor_id",
             "instrutor_nome",
             "plano_ids",
+            "planos_nomes",
+            "modulos_count",
             "subcategoria_id",
             "subcategoria_titulo",
             "categoria_titulo",
@@ -210,6 +214,14 @@ class CursoAdminSerializer(serializers.ModelSerializer):
         if obj.subcategoria_id and obj.subcategoria.categoria_id:
             return obj.subcategoria.categoria.titulo
         return None
+
+    def get_planos_nomes(self, obj):
+        return [p.nome for p in obj.planos.all()]
+
+    def get_modulos_count(self, obj):
+        if hasattr(obj, "modulos_count") and obj.modulos_count is not None:
+            return obj.modulos_count
+        return obj.modulos.filter(ativo=True).count()
 
     def validate_icone(self, value):
         _validar_icone(value)

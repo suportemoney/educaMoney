@@ -19,7 +19,7 @@ description: >-
 ## Rotas SPA (`basename=/portal`)
 
 - `/` dashboard bento (grid) + certificados
-- `/meus-cursos` biblioteca + filtros categoria/subcategoria
+- `/meus-cursos` biblioteca LMS: capa, chips de status, continuar → player, debounce busca
 - `/meus-cursos/:cursoId` outline módulos/aulas + emitir certificado
 - `/aulas/:aulaId` player HTML5 + materiais + quiz + concluir
 - `/conjuntos` trilhas (não liberam acesso sozinhas)
@@ -38,7 +38,7 @@ description: >-
 
 ## APIs aluno (`IsAluno`)
 
-- `GET /api/aluno/meus-cursos/`, `GET /api/aluno/catalogo/`
+- `GET /api/aluno/meus-cursos/`, `GET /api/aluno/catalogo/` — stats com `continuar_aula_id`, `ultima_atividade_em`, `certificado_codigo`
 - `GET /api/aluno/conjuntos/`, `GET /api/aluno/financas/`
 - `GET/POST /api/aluno/secretaria/tickets/`
 - `GET/POST /api/aluno/aulas/{id}/quiz/`
@@ -48,5 +48,5 @@ description: >-
 
 ## UX
 
-Tema dark neon + **CSS grid bento**; `CursoCard` com ícone.
+Tema dark neon + **CSS grid bento**; `CursoCard` com **capa**, badges de status e CTA Continuar → `/aulas/:id`.
 Não reutilizar layout da landing no portal.

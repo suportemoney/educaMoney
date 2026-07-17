@@ -45,18 +45,36 @@ from .serializers import (
 
 
 def _stats_progresso_curso(user, curso: Curso) -> dict:
-    aulas = Aula.objects.filter(
+    aulas_qs = Aula.objects.filter(
         modulo__curso=curso, modulo__ativo=True, ativo=True
-    )
-    total = aulas.count()
-    concluidas = ProgressoAula.objects.filter(
-        usuario=user, aula__in=aulas, concluida=True
-    ).count()
+    ).order_by("modulo__ordem", "modulo__id", "ordem", "id")
+    aulas = list(aulas_qs)
+    total = len(aulas)
+    progresso = {
+        p.aula_id: p
+        for p in ProgressoAula.objects.filter(usuario=user, aula__in=aulas)
+    }
+    concluidas = sum(1 for a in aulas if progresso.get(a.id) and progresso[a.id].concluida)
     pct = int(round(100 * concluidas / total)) if total else 0
+
+    continuar_aula_id = None
+    for a in aulas:
+        prog = progresso.get(a.id)
+        if not prog or not prog.concluida:
+            continuar_aula_id = a.id
+            break
+
+    ultima = None
+    for p in progresso.values():
+        if p.atualizado_em and (ultima is None or p.atualizado_em > ultima):
+            ultima = p.atualizado_em
+
     return {
         "aulas_total": total,
         "aulas_concluidas": concluidas,
         "progresso_pct": pct,
+        "continuar_aula_id": continuar_aula_id,
+        "ultima_atividade_em": ultima.isoformat() if ultima else None,
     }
 
 
@@ -365,7 +383,7 @@ class CatalogoAlunoView(APIView):
     permission_classes = [IsAluno]
 
     def get(self, request):
-        from .models import Subcategoria
+        from .models import Certificado, Subcategoria
 
         cursos = cursos_liberados_aluno(request.user)
         cat = request.query_params.get("categoria")
@@ -383,10 +401,20 @@ class CatalogoAlunoView(APIView):
                 Q(titulo__icontains=q) | Q(descricao__icontains=q)
             )
 
+        certs = {
+            c.curso_id: c.codigo
+            for c in Certificado.objects.filter(
+                usuario=request.user, revogado=False, curso__in=cursos
+            )
+        }
+
         out_cursos = []
         if tipo in ("all", "curso", "cursos"):
             for c in cursos:
-                row = CursoAlunoSerializer(c, context={"request": request}).data
+                row = CursoAlunoSerializer(
+                    c,
+                    context={"request": request, "certificados_map": certs},
+                ).data
                 row.update(_stats_progresso_curso(request.user, c))
                 out_cursos.append(row)
 

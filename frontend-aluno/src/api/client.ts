@@ -28,6 +28,8 @@ export type CursoAluno = {
   aulas_total: number;
   aulas_concluidas: number;
   progresso_pct: number;
+  continuar_aula_id?: number | null;
+  ultima_atividade_em?: string | null;
   icone_url: string | null;
   capa_url?: string | null;
   icone_key: string;

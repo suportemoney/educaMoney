@@ -277,6 +277,24 @@ def _dados_legais_perfil(request, perfil):
     }
 
 
+def _qs_dados_certificado_completos():
+    """Espelha Perfil.dados_certificado_completos() em filtros ORM."""
+    return (
+        ~Q(first_name="")
+        & ~Q(first_name__isnull=True)
+        & Q(perfil__cpf__isnull=False)
+        & ~Q(perfil__cpf="")
+        & Q(perfil__data_nascimento__isnull=False)
+        & ~Q(perfil__documento_tipo="")
+        & Q(perfil__documento_arquivo__isnull=False)
+        & ~Q(perfil__documento_arquivo="")
+    )
+
+
+def _qs_dados_certificado_incompletos():
+    return ~_qs_dados_certificado_completos()
+
+
 def _serializar_aluno_lista(request, u):
     vig = list(ativacoes_vigentes_qs(u).select_related("plano"))
     cursos = cursos_liberados_aluno(u)
@@ -355,17 +373,23 @@ class AdminAlunoListView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsAdminOrGestor]
 
     def get(self, request):
+        from accounts.cpf import limpar_cpf
+
         qs = User.objects.filter(perfil__papel=Perfil.Papel.ALUNO).select_related(
             "perfil"
         )
         busca = (request.query_params.get("q") or "").strip()
         if busca:
-            qs = qs.filter(
+            filtro_texto = (
                 Q(username__icontains=busca)
                 | Q(email__icontains=busca)
                 | Q(first_name__icontains=busca)
                 | Q(perfil__ra__icontains=busca)
             )
+            cpf_digits = limpar_cpf(busca)
+            if len(cpf_digits) >= 3:
+                filtro_texto |= Q(perfil__cpf__icontains=cpf_digits)
+            qs = qs.filter(filtro_texto)
         ativo = request.query_params.get("ativo")
         if ativo == "1":
             qs = qs.filter(is_active=True)
@@ -380,6 +404,12 @@ class AdminAlunoListView(APIView):
                 ativacoes__plano_id=int(plano_id),
                 ativacoes__ativo=True,
             ).distinct()
+
+        dados_cert = (request.query_params.get("dados_certificado") or "").strip()
+        if dados_cert == "1":
+            qs = qs.filter(_qs_dados_certificado_completos())
+        elif dados_cert == "0":
+            qs = qs.filter(_qs_dados_certificado_incompletos())
 
         out = []
         for u in qs.order_by("first_name", "username")[:200]:

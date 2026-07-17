@@ -50,6 +50,7 @@ export function AlunosPage() {
   const [planos, setPlanos] = useState<Plano[]>([]);
   const [q, setQ] = useState("");
   const [filtroAtivo, setFiltroAtivo] = useState("");
+  const [filtroDadosCert, setFiltroDadosCert] = useState("");
   const [comPlano, setComPlano] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [detalhe, setDetalhe] = useState<AlunoAdmin | null>(null);
@@ -68,6 +69,7 @@ export function AlunosPage() {
     const params = new URLSearchParams();
     if (q.trim()) params.set("q", q.trim());
     if (filtroAtivo) params.set("ativo", filtroAtivo);
+    if (filtroDadosCert) params.set("dados_certificado", filtroDadosCert);
     if (comPlano) params.set("com_plano", "1");
     const qs = params.toString();
     const [data, p] = await Promise.all([
@@ -247,7 +249,8 @@ export function AlunosPage() {
         </button>
       </div>
       <p className="page-lead">
-        Criar e editar alunos, filtrar por status/plano e ver progresso, ativações e certificados.
+        Criar e editar alunos, filtrar por status/plano/dados de certificado e ver
+        progresso, ativações e certificados.
       </p>
       {erro && <p className="form-erro">{erro}</p>}
       <form
@@ -262,7 +265,7 @@ export function AlunosPage() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="RA, nome, e-mail…"
+            placeholder="RA, nome, e-mail, CPF…"
           />
         </label>
         <label>
@@ -271,6 +274,17 @@ export function AlunosPage() {
             <option value="">Todos</option>
             <option value="1">Ativos</option>
             <option value="0">Inativos</option>
+          </select>
+        </label>
+        <label>
+          Dados certificado
+          <select
+            value={filtroDadosCert}
+            onChange={(e) => setFiltroDadosCert(e.target.value)}
+          >
+            <option value="">Todos</option>
+            <option value="1">Completos</option>
+            <option value="0">Incompletos</option>
           </select>
         </label>
         <label className="check-row filter-bar__check">
@@ -294,6 +308,7 @@ export function AlunosPage() {
               <th>E-mail</th>
               <th>Planos</th>
               <th>Progresso</th>
+              <th>Dados</th>
               <th>Ativo</th>
               <th></th>
             </tr>
@@ -306,6 +321,17 @@ export function AlunosPage() {
                 <td>{a.email}</td>
                 <td>{(a.planos || []).join(", ") || "—"}</td>
                 <td>{progressoMedio(a)}</td>
+                <td>
+                  <span
+                    className={
+                      a.dados_certificado_completos
+                        ? "badge badge--ok"
+                        : "badge badge--off"
+                    }
+                  >
+                    {a.dados_certificado_completos ? "Completo" : "Incompleto"}
+                  </span>
+                </td>
                 <td>{a.is_active ? "Sim" : "Não"}</td>
                 <td className="td-actions">
                   <button
@@ -329,7 +355,7 @@ export function AlunosPage() {
             ))}
             {itens.length === 0 && (
               <tr>
-                <td colSpan={7}>Nenhum aluno encontrado.</td>
+                <td colSpan={8}>Nenhum aluno encontrado.</td>
               </tr>
             )}
           </tbody>

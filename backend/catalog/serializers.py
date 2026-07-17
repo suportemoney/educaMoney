@@ -982,6 +982,9 @@ class CertificadoSerializer(serializers.ModelSerializer):
     curso_titulo = serializers.CharField(source="curso.titulo", read_only=True)
     usuario_nome = serializers.SerializerMethodField()
     usuario_ra = serializers.SerializerMethodField()
+    usuario_cpf = serializers.SerializerMethodField()
+    usuario_cpf_formatado = serializers.SerializerMethodField()
+    usuario_data_nascimento = serializers.SerializerMethodField()
 
     class Meta:
         model = Certificado
@@ -990,6 +993,9 @@ class CertificadoSerializer(serializers.ModelSerializer):
             "usuario",
             "usuario_nome",
             "usuario_ra",
+            "usuario_cpf",
+            "usuario_cpf_formatado",
+            "usuario_data_nascimento",
             "curso",
             "curso_titulo",
             "codigo",
@@ -1003,6 +1009,22 @@ class CertificadoSerializer(serializers.ModelSerializer):
     def get_usuario_ra(self, obj):
         perfil = getattr(obj.usuario, "perfil", None)
         return getattr(perfil, "ra", None) if perfil else None
+
+    def get_usuario_cpf(self, obj):
+        perfil = getattr(obj.usuario, "perfil", None)
+        return (perfil.cpf if perfil else "") or ""
+
+    def get_usuario_cpf_formatado(self, obj):
+        from accounts.cpf import formatar_cpf
+
+        cpf = self.get_usuario_cpf(obj)
+        return formatar_cpf(cpf) if cpf else ""
+
+    def get_usuario_data_nascimento(self, obj):
+        perfil = getattr(obj.usuario, "perfil", None)
+        if not perfil or not perfil.data_nascimento:
+            return None
+        return perfil.data_nascimento.isoformat()
 
 
 class EmitirCertificadoSerializer(serializers.Serializer):

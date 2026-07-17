@@ -92,6 +92,21 @@ def aplicar_dados_legais(
                 {"detail": "PDF no máximo 5 MB."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # Assinatura real do arquivo (não basta a extensão)
+        try:
+            pos = doc.tell() if hasattr(doc, "tell") else None
+            cabecalho = doc.read(5)
+            if hasattr(doc, "seek"):
+                doc.seek(pos or 0)
+        except OSError:
+            cabecalho = b""
+        if not isinstance(cabecalho, (bytes, bytearray)):
+            cabecalho = bytes(cabecalho) if cabecalho else b""
+        if not cabecalho.startswith(b"%PDF"):
+            return [], Response(
+                {"detail": "Arquivo inválido: o conteúdo não é um PDF."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         perfil.documento_arquivo = doc
         update.append("documento_arquivo")
 

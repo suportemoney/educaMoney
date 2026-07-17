@@ -244,7 +244,7 @@ def _bool_param(raw, default=None):
     return str(raw).lower() in ("1", "true", "yes", "on")
 
 
-def _dados_legais_perfil(request, perfil):
+def _dados_legais_perfil(request, perfil, aluno_id: int | None = None):
     from accounts.cpf import formatar_cpf
     from accounts.models import Perfil
 
@@ -259,9 +259,9 @@ def _dados_legais_perfil(request, perfil):
             "dados_certificado_completos": False,
         }
     doc_url = None
-    if perfil.documento_arquivo:
-        url = perfil.documento_arquivo.url
-        doc_url = request.build_absolute_uri(url) if request else url
+    if perfil.documento_arquivo and aluno_id is not None:
+        path = f"/api/admin/alunos/{aluno_id}/documento/"
+        doc_url = request.build_absolute_uri(path) if request else path
     tipo = perfil.documento_tipo or ""
     labels = dict(Perfil.DocumentoTipo.choices)
     return {
@@ -313,7 +313,7 @@ def _serializar_aluno_lista(request, u):
         "planos": [a.plano.nome for a in vig],
         "progresso": progresso,
     }
-    row.update(_dados_legais_perfil(request, perfil))
+    row.update(_dados_legais_perfil(request, perfil, aluno_id=u.id))
     return row
 
 
@@ -365,7 +365,7 @@ def _serializar_aluno_detalhe(request, u):
             for c in certificados
         ],
     }
-    row.update(_dados_legais_perfil(request, perfil))
+    row.update(_dados_legais_perfil(request, perfil, aluno_id=u.id))
     return row
 
 
@@ -548,6 +548,27 @@ class AdminAlunoDetailView(APIView):
             perfil.save(update_fields=list(dict.fromkeys(perfil_update)))
 
         return self.get(request, pk)
+
+
+class AdminAlunoDocumentoView(APIView):
+    """Download autenticado do PDF de identidade (admin/gestor) + log."""
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrGestor]
+
+    def get(self, request, pk):
+        from accounts.documento_serve import servir_documento_aluno
+        from accounts.models import DocumentoAcessoLog
+
+        u = get_object_or_404(
+            User.objects.select_related("perfil"),
+            pk=pk,
+            perfil__papel=Perfil.Papel.ALUNO,
+        )
+        return servir_documento_aluno(
+            visualizador=request.user,
+            aluno=u,
+            origem=DocumentoAcessoLog.Origem.ADMIN,
+        )
 
 
 class AdminQuizByAulaView(APIView):

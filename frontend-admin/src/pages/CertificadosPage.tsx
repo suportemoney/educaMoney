@@ -78,6 +78,8 @@ export function CertificadosPage() {
               <th>Código</th>
               <th>Aluno</th>
               <th>RA</th>
+              <th>CPF</th>
+              <th>Nascimento</th>
               <th>Curso</th>
               <th>Emitido</th>
               <th>Status</th>
@@ -90,12 +92,24 @@ export function CertificadosPage() {
                 <td>{c.codigo}</td>
                 <td>{c.usuario_nome}</td>
                 <td>{c.usuario_ra || "—"}</td>
+                <td>{c.usuario_cpf_formatado || c.usuario_cpf || "—"}</td>
+                <td>
+                  {c.usuario_data_nascimento
+                    ? new Date(
+                        c.usuario_data_nascimento + "T12:00:00"
+                      ).toLocaleDateString("pt-BR")
+                    : "—"}
+                </td>
                 <td>{c.curso_titulo}</td>
                 <td>{new Date(c.emitido_em).toLocaleDateString("pt-BR")}</td>
                 <td>{c.revogado ? "Revogado" : "Válido"}</td>
                 <td className="td-actions">
                   {!c.revogado && (
-                    <button type="button" className="btn btn--ghost btn--small" onClick={() => revogar(c)}>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--small"
+                      onClick={() => revogar(c)}
+                    >
                       Revogar
                     </button>
                   )}
@@ -104,7 +118,7 @@ export function CertificadosPage() {
             ))}
             {itens.length === 0 && (
               <tr>
-                <td colSpan={7}>Nenhum certificado.</td>
+                <td colSpan={9}>Nenhum certificado.</td>
               </tr>
             )}
           </tbody>

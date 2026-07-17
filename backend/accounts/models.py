@@ -102,3 +102,38 @@ class Perfil(models.Model):
             and self.documento_tipo
             and self.documento_arquivo
         )
+
+
+class DocumentoAcessoLog(models.Model):
+    """Registro de quem visualizou o PDF de identidade do aluno (LGPD)."""
+
+    class Origem(models.TextChoices):
+        PORTAL = "portal", "Portal"
+        ADMIN = "admin", "Painel"
+
+    visualizador = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="documentos_visualizados",
+        verbose_name="visualizador",
+    )
+    aluno = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="documentos_acessados",
+        verbose_name="aluno",
+    )
+    origem = models.CharField(
+        "origem",
+        max_length=16,
+        choices=Origem.choices,
+    )
+    criado_em = models.DateTimeField("criado em", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "acesso a documento"
+        verbose_name_plural = "acessos a documentos"
+        ordering = ("-criado_em",)
+
+    def __str__(self):
+        return f"{self.visualizador_id} → aluno {self.aluno_id} ({self.origem})"

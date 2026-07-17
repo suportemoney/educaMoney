@@ -132,11 +132,12 @@ class UserSerializer(serializers.ModelSerializer):
         perfil = getattr(obj, "perfil", None)
         if not perfil or not perfil.documento_arquivo:
             return None
+        # URL autenticada (não expõe /media/ público)
         request = self.context.get("request")
-        url = perfil.documento_arquivo.url
+        path = "/api/auth/me/documento/"
         if request:
-            return request.build_absolute_uri(url)
-        return url
+            return request.build_absolute_uri(path)
+        return path
 
     def get_dados_certificado_completos(self, obj):
         perfil = getattr(obj, "perfil", None)

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { apiFormData, apiRequest, type AlunoAdmin, type Plano } from "../api/client";
+import { apiFormData, apiRequest, abrirPdfAutenticado, type AlunoAdmin, type Plano } from "../api/client";
 import { Modal } from "../components/Modal";
 import { useAuth } from "../context/AuthContext";
 import { previewValorUpgrade } from "./AtivacoesPage";
@@ -489,9 +489,17 @@ export function AlunosPage() {
               {editando.documento_url && (
                 <p className="page-lead" style={{ margin: 0, fontSize: "0.85rem" }}>
                   Documento atual:{" "}
-                  <a href={editando.documento_url} target="_blank" rel="noreferrer">
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--small"
+                    onClick={() =>
+                      abrirPdfAutenticado(editando.documento_url!, access).catch(
+                        (e: Error) => setErro(e.message)
+                      )
+                    }
+                  >
                     ver PDF
-                  </a>
+                  </button>
                 </p>
               )}
             </>
@@ -550,9 +558,17 @@ export function AlunosPage() {
                   {detalhe.documento_url ? (
                     <>
                       {" · "}
-                      <a href={detalhe.documento_url} target="_blank" rel="noreferrer">
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--small"
+                        onClick={() =>
+                          abrirPdfAutenticado(detalhe.documento_url!, access).catch(
+                            (e: Error) => setErro(e.message)
+                          )
+                        }
+                      >
                         ver PDF
-                      </a>
+                      </button>
                     </>
                   ) : null}
                 </dd>

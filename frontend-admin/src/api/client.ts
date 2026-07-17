@@ -146,6 +146,9 @@ export type CertificadoAdmin = {
   usuario: number;
   usuario_nome: string;
   usuario_ra: string | null;
+  usuario_cpf?: string;
+  usuario_cpf_formatado?: string;
+  usuario_data_nascimento?: string | null;
   curso: number;
   curso_titulo: string;
   codigo: string;
@@ -355,6 +358,25 @@ export async function apiFormData<T>(
   const data = parseJsonBody(await res.text());
   if (!res.ok) throw new ApiError(res.status, data ?? {});
   return data as T;
+}
+
+/** Abre PDF protegido (Bearer) em nova aba via blob. */
+export async function abrirPdfAutenticado(
+  url: string,
+  token: string | null | undefined
+): Promise<void> {
+  if (!token) throw new Error("Sem autenticação.");
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, data);
+  }
+  const blob = await res.blob();
+  const obj = URL.createObjectURL(blob);
+  window.open(obj, "_blank", "noopener,noreferrer");
+  window.setTimeout(() => URL.revokeObjectURL(obj), 60_000);
 }
 
 /** Substitui {variavel} pelo valor — landing faz o mesmo por plano. */

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { apiFormData, type User } from "../api/client";
+import { apiFormData, abrirPdfAutenticado, type User } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 
 const DOC_TIPOS = [
@@ -187,9 +187,17 @@ export function PerfilPage() {
             {user?.documento_url && (
               <p className="portal-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
                 Documento atual:{" "}
-                <a href={user.documento_url} target="_blank" rel="noreferrer">
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--small"
+                  onClick={() =>
+                    abrirPdfAutenticado(user.documento_url!, access).catch((err) =>
+                      setErro(err instanceof Error ? err.message : "Falha ao abrir PDF")
+                    )
+                  }
+                >
                   ver PDF
-                </a>
+                </button>
                 {user.documento_tipo
                   ? ` (${DOC_TIPOS.find((t) => t.value === user.documento_tipo)?.label || user.documento_tipo})`
                   : ""}

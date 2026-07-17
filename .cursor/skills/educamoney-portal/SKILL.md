@@ -28,6 +28,8 @@ description: >-
 - `/perfil` RA (read-only) + nome/bio/foto + **dados legais** (CPF, nascimento, PDF RG/CNH/passaporte) via `PATCH /auth/me/`
 - Painel: admin/gestor edita os mesmos dados em **Alunos → Editar** (`PATCH` multipart `/api/admin/alunos/{id}/`)
 - Lista alunos: badge Completo/Incompleto, filtro `dados_certificado`, busca `q` por CPF
+- Certificados (admin): colunas CPF e nascimento
+- PDF identidade: só via API autenticada (`/auth/me/documento/`, `/admin/alunos/{id}/documento/`) + `DocumentoAcessoLog`
 - Certificado: exige perfil completo (`dados_certificado_completos`) + aulas + prova
 - CPF único no banco (`NULL` se vazio)
 - `/ativar` só se sem plano vigente (nav oculta item)

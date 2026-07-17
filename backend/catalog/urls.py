@@ -39,6 +39,7 @@ from .lms_admin_views import (
     AdminAlternativaDetailView,
     AdminAlternativaListCreateView,
     AdminAlunoDetailView,
+    AdminAlunoDocumentoView,
     AdminAlunoListView,
     AdminCertificadoEmitirView,
     AdminCertificadoListView,
@@ -201,6 +202,11 @@ admin_urlpatterns = [
     ),
     path("alunos/", AdminAlunoListView.as_view(), name="admin-alunos"),
     path("alunos/<int:pk>/", AdminAlunoDetailView.as_view(), name="admin-aluno-detail"),
+    path(
+        "alunos/<int:pk>/documento/",
+        AdminAlunoDocumentoView.as_view(),
+        name="admin-aluno-documento",
+    ),
     path(
         "certificados/",
         AdminCertificadoListView.as_view(),

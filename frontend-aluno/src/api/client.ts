@@ -273,6 +273,25 @@ export async function apiFormData<T>(
   return data as T;
 }
 
+/** Abre PDF protegido (Bearer) em nova aba via blob. */
+export async function abrirPdfAutenticado(
+  url: string,
+  token: string | null | undefined
+): Promise<void> {
+  if (!token) throw new Error("Sem autenticação.");
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, data);
+  }
+  const blob = await res.blob();
+  const obj = URL.createObjectURL(blob);
+  window.open(obj, "_blank", "noopener,noreferrer");
+  window.setTimeout(() => URL.revokeObjectURL(obj), 60_000);
+}
+
 const ICON_GLYPH: Record<string, string> = {
   wallet: "◎",
   shield: "◆",

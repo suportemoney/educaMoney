@@ -104,6 +104,22 @@ class MeView(APIView):
         return Response(UserSerializer(user, context={"request": request}).data)
 
 
+class MeDocumentoView(APIView):
+    """Download autenticado do próprio PDF de identidade (portal) + log."""
+
+    permission_classes = [permissions.IsAuthenticated, IsAluno]
+
+    def get(self, request):
+        from .documento_serve import servir_documento_aluno
+        from .models import DocumentoAcessoLog
+
+        return servir_documento_aluno(
+            visualizador=request.user,
+            aluno=request.user,
+            origem=DocumentoAcessoLog.Origem.PORTAL,
+        )
+
+
 class LogoutView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 

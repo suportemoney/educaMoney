@@ -7,9 +7,11 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 
 from django.core.files import File
+from django.db import close_old_connections
 
 logger = logging.getLogger(__name__)
 
@@ -110,10 +112,69 @@ def converter_para_webm(caminho_origem: str | Path) -> Path | None:
         return None
 
 
+def _precisa_converter(path: str) -> bool:
+    nome = Path(path).name.lower()
+    return nome.endswith((".mp4", ".mov", ".mkv"))
+
+
+def _aplicar_webm(aula, path: str, webm_tmp: Path) -> None:
+    antigo = path
+    base = Path(aula.video.name).stem
+    with open(webm_tmp, "rb") as fh:
+        aula.video.save(f"{base}.webm", File(fh), save=False)
+    aula.save(update_fields=["video"])
+    try:
+        if antigo and os.path.isfile(antigo) and antigo != getattr(aula.video, "path", None):
+            os.unlink(antigo)
+    except OSError:
+        pass
+    webm_tmp.unlink(missing_ok=True)
+
+
+def _converter_aula_em_background(aula_id: int) -> None:
+    """Conversão pesada fora do request HTTP (evita 504 no nginx)."""
+    close_old_connections()
+    try:
+        from catalog.models import Aula
+
+        aula = Aula.objects.filter(pk=aula_id).first()
+        if not aula or not aula.video:
+            return
+        try:
+            path = aula.video.path
+        except (ValueError, NotImplementedError):
+            return
+        if not path or not os.path.isfile(path) or not _precisa_converter(path):
+            return
+        webm_tmp = converter_para_webm(path)
+        if not webm_tmp:
+            return
+        # Recarrega: outro request pode ter alterado a aula
+        aula = Aula.objects.filter(pk=aula_id).first()
+        if not aula or not aula.video:
+            webm_tmp.unlink(missing_ok=True)
+            return
+        try:
+            path_atual = aula.video.path
+        except (ValueError, NotImplementedError):
+            webm_tmp.unlink(missing_ok=True)
+            return
+        if path_atual != path:
+            # Novo upload substituiu o arquivo — descarta conversão antiga
+            webm_tmp.unlink(missing_ok=True)
+            return
+        _aplicar_webm(aula, path_atual, webm_tmp)
+        logger.info("Aula %s convertida para webm em background", aula_id)
+    except Exception:
+        logger.exception("Falha na conversão webm da aula %s", aula_id)
+    finally:
+        close_old_connections()
+
+
 def processar_video_aula(aula) -> None:
     """
-    Após salvar vídeo: define duração e, se for mp4, tenta converter para webm.
-    Atualiza o FileField da aula no lugar.
+    Após salvar vídeo: grava duração na hora e dispara conversão WebM em background.
+    Assim o PATCH/POST responde rápido e a duração já aparece na lista.
     """
     if not aula.video:
         return
@@ -126,39 +187,14 @@ def processar_video_aula(aula) -> None:
         return
 
     dur = obter_duracao_segundos(path)
-    nome = Path(path).name.lower()
-    webm_tmp = None
-    if nome.endswith(".mp4") or nome.endswith(".mov") or nome.endswith(".mkv"):
-        webm_tmp = converter_para_webm(path)
-
-    update_fields: list[str] = []
     if dur is not None and aula.duracao_segundos != dur:
         aula.duracao_segundos = dur
-        update_fields.append("duracao_segundos")
+        aula.save(update_fields=["duracao_segundos"])
 
-    if webm_tmp:
-        antigo = path
-        base = Path(aula.video.name).stem
-        with open(webm_tmp, "rb") as fh:
-            aula.video.save(f"{base}.webm", File(fh), save=False)
-        update_fields.append("video")
-        # Remove original no disco se ainda existir
-        try:
-            if antigo and os.path.isfile(antigo) and antigo != getattr(aula.video, "path", None):
-                os.unlink(antigo)
-        except OSError:
-            pass
-        webm_tmp.unlink(missing_ok=True)
-        # Re-probe no webm se duração ainda vazia
-        if aula.duracao_segundos is None:
-            try:
-                d2 = obter_duracao_segundos(aula.video.path)
-                if d2 is not None:
-                    aula.duracao_segundos = d2
-                    if "duracao_segundos" not in update_fields:
-                        update_fields.append("duracao_segundos")
-            except (ValueError, NotImplementedError, OSError):
-                pass
-
-    if update_fields:
-        aula.save(update_fields=list(dict.fromkeys(update_fields)))
+    if _precisa_converter(path):
+        threading.Thread(
+            target=_converter_aula_em_background,
+            args=(aula.pk,),
+            daemon=True,
+            name=f"webm-aula-{aula.pk}",
+        ).start()

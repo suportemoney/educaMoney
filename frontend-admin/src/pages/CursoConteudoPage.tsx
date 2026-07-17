@@ -272,6 +272,7 @@ export function CursoConteudoPage() {
   async function salvarAula(e: FormEvent) {
     e.preventDefault();
     if (!access || moduloSel == null) return;
+    const comVideo = Boolean(formAula.videoFile);
     setSalvando(true);
     setErro(null);
     const fd = new FormData();
@@ -296,7 +297,15 @@ export function CursoConteudoPage() {
       setModalAula(false);
       await carregarModuloExtra(moduloSel);
     } catch (err) {
-      setErro(err instanceof Error ? err.message : "Falha ao salvar aula");
+      const msg =
+        err instanceof Error ? err.message : "Falha ao salvar aula";
+      // Timeout: upload/duração podem ter concluído no servidor — atualiza lista
+      setErro(
+        comVideo
+          ? `${msg}. Se o vídeo já aparecer na lista, a duração deve surgir após atualizar; a conversão WebM continua em segundo plano.`
+          : msg
+      );
+      await carregarModuloExtra(moduloSel).catch(() => undefined);
     } finally {
       setSalvando(false);
     }
@@ -1176,19 +1185,38 @@ export function CursoConteudoPage() {
             </p>
           )}
           <p className="page-lead" style={{ margin: 0, fontSize: "0.85rem" }}>
-            Ao enviar .mp4, o servidor mede a duração e converte para .webm quando possível.
-            Ordem: arraste na lista de aulas.
+            Ao enviar o vídeo, o servidor mede a duração na hora e converte para .webm em
+            segundo plano. Ordem: arraste na lista de aulas.
           </p>
           <label className="check-row">
             <input
               type="checkbox"
               checked={formAula.ativo}
               onChange={(e) => setFormAula({ ...formAula, ativo: e.target.checked })}
+              disabled={salvando}
             />
             Ativo
           </label>
+          {salvando && formAula.videoFile ? (
+            <div className="video-process" role="status" aria-live="polite">
+              <div className="video-process__head">
+                <span className="video-process__spinner" aria-hidden />
+                <span>Processando vídeo…</span>
+              </div>
+              <div className="video-process__track">
+                <div className="video-process__bar" />
+              </div>
+              <p className="video-process__hint">
+                Enviando arquivo, medindo duração e preparando conversão WebM.
+              </p>
+            </div>
+          ) : null}
           <button className="btn btn--primary" type="submit" disabled={salvando}>
-            {salvando ? (formAula.videoFile ? "Processando vídeo…" : "Salvando…") : "Salvar"}
+            {salvando
+              ? formAula.videoFile
+                ? "Aguarde…"
+                : "Salvando…"
+              : "Salvar"}
           </button>
         </form>
       </Modal>

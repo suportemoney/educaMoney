@@ -280,13 +280,19 @@ export class ApiError extends Error {
   status: number;
   data: unknown;
   constructor(status: number, data: unknown) {
-    const msg =
+    let msg = `Erro HTTP ${status}`;
+    if (
       data &&
       typeof data === "object" &&
       "detail" in data &&
       typeof (data as { detail: unknown }).detail === "string"
-        ? (data as { detail: string }).detail
-        : `Erro HTTP ${status}`;
+    ) {
+      msg = (data as { detail: string }).detail;
+    } else if (status === 504) {
+      msg = "Tempo esgotado no servidor (504). O vídeo pode ter sido salvo — atualize a lista.";
+    } else if (status === 502) {
+      msg = "Servidor indisponível (502). Tente de novo em instantes.";
+    }
     super(msg);
     this.status = status;
     this.data = data;

@@ -63,6 +63,71 @@ a {
   cursor: not-allowed;
 }
 
+/* Feedback visual do upload/processamento de vídeo da aula */
+.video-process {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--em-blue) 35%, transparent);
+  background: color-mix(in srgb, var(--em-blue) 10%, transparent);
+}
+
+.video-process__head {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-weight: 600;
+  color: var(--em-text, #e8eef8);
+}
+
+.video-process__spinner {
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, #39ff9e 30%, transparent);
+  border-top-color: #39ff9e;
+  animation: video-spin 0.75s linear infinite;
+}
+
+.video-process__track {
+  height: 0.45rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, #05080f 55%, transparent);
+}
+
+.video-process__bar {
+  height: 100%;
+  width: 40%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #39ff9e, #5eb7ff, #39ff9e);
+  background-size: 200% 100%;
+  animation: video-bar 1.2s ease-in-out infinite;
+}
+
+.video-process__hint {
+  margin: 0;
+  font-size: 0.82rem;
+  opacity: 0.85;
+  line-height: 1.35;
+}
+
+@keyframes video-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes video-bar {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
 .auth-page {
   min-height: 100vh;
   display: grid;

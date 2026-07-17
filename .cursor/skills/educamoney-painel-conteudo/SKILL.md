@@ -15,7 +15,7 @@ Ao abrir módulo → 3 containers: **Aulas** | **Materiais** | **Atividades**.
 Fora do módulo → **1 prova avaliadora** do curso (`Quiz.tipo=prova_curso`); aprovação + aulas concluídas = certificado.
 
 - `Aula`: vídeo FileField `aulas/` (mp4/webm, máx. 500 MB)
-- Upload: **duração via ffprobe**; **MP4→WebM** com ffmpeg quando possível
+- Upload: **duração via ffprobe** (salva na hora); **MP4→WebM** em background com ffmpeg
 - Ordem de módulo/aula: **automática no create**; reordenar com drag (`…/reordenar/`)
 - `MaterialAula`: FK `modulo` (cascata); `aula` legado opcional
 - `Quiz.tipo`: `atividade` (módulo), `prova_curso` (curso 1:1), `quiz_aula` (legado)

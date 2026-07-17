@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { apiRequest, type AlunoAdmin, type Plano } from "../api/client";
+import { apiFormData, apiRequest, type AlunoAdmin, type Plano } from "../api/client";
 import { Modal } from "../components/Modal";
 import { useAuth } from "../context/AuthContext";
 import { previewValorUpgrade } from "./AtivacoesPage";
@@ -13,6 +13,24 @@ function progressoMedio(a: AlunoAdmin): string {
   return `${media}%`;
 }
 
+const DOC_TIPOS = [
+  { value: "rg", label: "Carteira de identidade (RG)" },
+  { value: "cnh", label: "CNH" },
+  { value: "passaporte", label: "Passaporte" },
+] as const;
+
+function soDigitos(v: string): string {
+  return v.replace(/\D/g, "").slice(0, 11);
+}
+
+function formatCpfInput(v: string): string {
+  const d = soDigitos(v);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `${d.slice(0, 3)}.${d.slice(3)}`;
+  if (d.length <= 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`;
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+}
+
 const FORM_VAZIO = {
   username: "",
   email: "",
@@ -20,6 +38,10 @@ const FORM_VAZIO = {
   password: "",
   bio: "",
   is_active: true,
+  cpf: "",
+  data_nascimento: "",
+  documento_tipo: "",
+  documentoArquivo: null as File | null,
 };
 
 export function AlunosPage() {
@@ -83,6 +105,10 @@ export function AlunosPage() {
       password: "",
       bio: a.bio || "",
       is_active: a.is_active,
+      cpf: a.cpf_formatado || a.cpf || "",
+      data_nascimento: a.data_nascimento || "",
+      documento_tipo: a.documento_tipo || "",
+      documentoArquivo: null,
     });
     setModalForm(true);
   }
@@ -94,18 +120,26 @@ export function AlunosPage() {
     setErro(null);
     try {
       if (editando) {
-        const body: Record<string, unknown> = {
-          first_name: form.first_name,
-          email: form.email,
-          is_active: form.is_active,
-          bio: form.bio,
-        };
-        if (form.password) body.password = form.password;
-        await apiRequest(`/admin/alunos/${editando.id}/`, {
+        const fd = new FormData();
+        fd.append("first_name", form.first_name);
+        fd.append("email", form.email);
+        fd.append("is_active", form.is_active ? "true" : "false");
+        fd.append("bio", form.bio);
+        if (form.password) fd.append("password", form.password);
+        fd.append("cpf", soDigitos(form.cpf));
+        fd.append("data_nascimento", form.data_nascimento);
+        fd.append("documento_tipo", form.documento_tipo);
+        if (form.documentoArquivo) {
+          fd.append("documento_arquivo", form.documentoArquivo);
+        }
+        await apiFormData(`/admin/alunos/${editando.id}/`, {
           method: "PATCH",
           token: access,
-          body,
+          formData: fd,
         });
+        if (detalhe?.id === editando.id) {
+          await abrirDetalhe(editando.id);
+        }
       } else {
         await apiRequest("/admin/alunos/", {
           method: "POST",
@@ -368,6 +402,73 @@ export function AlunosPage() {
               />
               Conta ativa
             </label>
+          )}
+          {editando && (
+            <>
+              <h3 style={{ margin: "0.35rem 0 0" }}>Dados para certificado</h3>
+              <p className="page-lead" style={{ margin: 0, fontSize: "0.85rem" }}>
+                CPF, nascimento e PDF (RG, CNH ou passaporte). O aluno também pode
+                preencher no portal.
+              </p>
+              <label>
+                CPF
+                <input
+                  value={form.cpf}
+                  onChange={(e) =>
+                    setForm({ ...form, cpf: formatCpfInput(e.target.value) })
+                  }
+                  inputMode="numeric"
+                  placeholder="000.000.000-00"
+                />
+              </label>
+              <label>
+                Data de nascimento
+                <input
+                  type="date"
+                  value={form.data_nascimento}
+                  onChange={(e) =>
+                    setForm({ ...form, data_nascimento: e.target.value })
+                  }
+                />
+              </label>
+              <label>
+                Tipo de documento
+                <select
+                  value={form.documento_tipo}
+                  onChange={(e) =>
+                    setForm({ ...form, documento_tipo: e.target.value })
+                  }
+                >
+                  <option value="">Selecione…</option>
+                  {DOC_TIPOS.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Documento (PDF)
+                <input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      documentoArquivo: e.target.files?.[0] ?? null,
+                    })
+                  }
+                />
+              </label>
+              {editando.documento_url && (
+                <p className="page-lead" style={{ margin: 0, fontSize: "0.85rem" }}>
+                  Documento atual:{" "}
+                  <a href={editando.documento_url} target="_blank" rel="noreferrer">
+                    ver PDF
+                  </a>
+                </p>
+              )}
+            </>
           )}
           <button className="btn btn--primary" type="submit" disabled={salvando}>
             {salvando ? "Salvando…" : "Salvar"}

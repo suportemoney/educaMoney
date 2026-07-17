@@ -434,6 +434,7 @@ class AdminAlunoListView(APIView):
 
 class AdminAlunoDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsAdminOrGestor]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get(self, request, pk):
         u = get_object_or_404(
@@ -444,6 +445,8 @@ class AdminAlunoDetailView(APIView):
         return Response(_serializar_aluno_detalhe(request, u))
 
     def patch(self, request, pk):
+        from accounts.dados_legais import aplicar_dados_legais
+
         u = get_object_or_404(
             User.objects.select_related("perfil"),
             pk=pk,
@@ -498,10 +501,21 @@ class AdminAlunoDetailView(APIView):
                 if "password" in update_fields:
                     u.save()
 
-        perfil = u.perfil
+        perfil, _ = Perfil.objects.get_or_create(
+            user=u, defaults={"papel": Perfil.Papel.ALUNO}
+        )
+        perfil_update: list[str] = []
         if "bio" in data:
             perfil.bio = str(data.get("bio") or "")
-            perfil.save(update_fields=["bio"])
+            perfil_update.append("bio")
+
+        legais, erro = aplicar_dados_legais(perfil, data, request.FILES)
+        if erro is not None:
+            return erro
+        perfil_update.extend(legais)
+
+        if perfil_update:
+            perfil.save(update_fields=list(dict.fromkeys(perfil_update)))
 
         return self.get(request, pk)
 

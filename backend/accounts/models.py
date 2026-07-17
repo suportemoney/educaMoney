@@ -51,9 +51,10 @@ class Perfil(models.Model):
         "CPF",
         max_length=11,
         blank=True,
-        default="",
-        db_index=True,
-        help_text="Somente dígitos.",
+        null=True,
+        unique=True,
+        default=None,
+        help_text="Somente dígitos; vazio = NULL.",
     )
     data_nascimento = models.DateField(
         "data de nascimento",

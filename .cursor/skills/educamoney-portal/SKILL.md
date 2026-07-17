@@ -26,7 +26,9 @@ description: >-
 - `/financas` validade + WhatsApp upgrade/renovar
 - `/secretaria` tickets
 - `/perfil` RA (read-only) + nome/bio/foto + **dados legais** (CPF, nascimento, PDF RG/CNH/passaporte) via `PATCH /auth/me/`
+- Painel: admin/gestor edita os mesmos dados em **Alunos → Editar** (`PATCH` multipart `/api/admin/alunos/{id}/`)
 - Certificado: exige perfil completo (`dados_certificado_completos`) + aulas + prova
+- CPF único no banco (`NULL` se vazio)
 - `/ativar` só se sem plano vigente (nav oculta item)
 
 ## Domínio relevante

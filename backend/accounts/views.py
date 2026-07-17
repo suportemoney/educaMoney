@@ -76,9 +76,7 @@ class MeView(APIView):
         return Response(UserSerializer(request.user, context={"request": request}).data)
 
     def patch(self, request):
-        from datetime import date
-
-        from .cpf import cpf_valido, limpar_cpf
+        from .dados_legais import aplicar_dados_legais
 
         user = request.user
         if "first_name" in request.data:
@@ -96,81 +94,10 @@ class MeView(APIView):
             perfil.foto = foto
             update_perfil.append("foto")
 
-        # Dados legais (aluno) — necessários para certificado
-        if "cpf" in request.data:
-            cpf = limpar_cpf(str(request.data.get("cpf") or ""))
-            if cpf and not cpf_valido(cpf):
-                return Response(
-                    {"detail": "CPF inválido."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if cpf:
-                conflito = (
-                    Perfil.objects.filter(cpf=cpf)
-                    .exclude(pk=perfil.pk)
-                    .exists()
-                )
-                if conflito:
-                    return Response(
-                        {"detail": "Este CPF já está cadastrado."},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-            perfil.cpf = cpf
-            update_perfil.append("cpf")
-
-        if "data_nascimento" in request.data:
-            raw = request.data.get("data_nascimento")
-            if raw in (None, ""):
-                perfil.data_nascimento = None
-            else:
-                try:
-                    # Aceita YYYY-MM-DD (input type=date)
-                    partes = str(raw).strip()[:10].split("-")
-                    perfil.data_nascimento = date(
-                        int(partes[0]), int(partes[1]), int(partes[2])
-                    )
-                except (ValueError, IndexError, TypeError):
-                    return Response(
-                        {"detail": "Data de nascimento inválida."},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                if perfil.data_nascimento > date.today():
-                    return Response(
-                        {"detail": "Data de nascimento não pode ser no futuro."},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-            update_perfil.append("data_nascimento")
-
-        if "documento_tipo" in request.data:
-            tipo = str(request.data.get("documento_tipo") or "").strip().lower()
-            permitidos = {c.value for c in Perfil.DocumentoTipo}
-            if tipo and tipo not in permitidos:
-                return Response(
-                    {
-                        "detail": (
-                            "Documento inválido. Use RG, CNH ou passaporte."
-                        )
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            perfil.documento_tipo = tipo
-            update_perfil.append("documento_tipo")
-
-        doc = request.FILES.get("documento_arquivo")
-        if doc is not None:
-            nome = (doc.name or "").lower()
-            if not nome.endswith(".pdf"):
-                return Response(
-                    {"detail": "O documento deve ser um PDF."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if getattr(doc, "size", 0) > 5 * 1024 * 1024:
-                return Response(
-                    {"detail": "PDF no máximo 5 MB."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            perfil.documento_arquivo = doc
-            update_perfil.append("documento_arquivo")
+        legais, erro = aplicar_dados_legais(perfil, request.data, request.FILES)
+        if erro is not None:
+            return erro
+        update_perfil.extend(legais)
 
         if update_perfil:
             perfil.save(update_fields=list(dict.fromkeys(update_perfil)))

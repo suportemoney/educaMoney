@@ -636,7 +636,7 @@ class AulaAdminSerializer(serializers.ModelSerializer):
             "ordem",
             "ativo",
         )
-        read_only_fields = ("modulo",)
+        read_only_fields = ("modulo", "duracao_segundos")
         extra_kwargs = {"video": {"required": False, "allow_null": True}}
 
     def get_video_url(self, obj):

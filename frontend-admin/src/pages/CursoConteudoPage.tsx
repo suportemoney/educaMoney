@@ -14,13 +14,11 @@ import {
 import { Modal } from "../components/Modal";
 import { useAuth } from "../context/AuthContext";
 
-const moduloVazio = { titulo: "", ordem: 0, ativo: true };
+const moduloVazio = { titulo: "", ativo: true };
 const aulaVazia = {
   titulo: "",
   descricao: "",
-  ordem: 0,
   ativo: true,
-  duracao_segundos: "" as string | number,
   videoFile: null as File | null,
 };
 const matVazio = { titulo: "", ordem: 0, ativo: true, arquivo: null as File | null };
@@ -212,7 +210,7 @@ export function CursoConteudoPage() {
 
   function abrirEditarModulo(m: Modulo) {
     setEditModulo(m);
-    setFormModulo({ titulo: m.titulo, ordem: m.ordem, ativo: m.ativo });
+    setFormModulo({ titulo: m.titulo, ativo: m.ativo });
     setModalModulo(true);
   }
 
@@ -265,9 +263,7 @@ export function CursoConteudoPage() {
     setFormAula({
       titulo: a.titulo,
       descricao: a.descricao || "",
-      ordem: a.ordem,
       ativo: a.ativo,
-      duracao_segundos: a.duracao_segundos ?? "",
       videoFile: null,
     });
     setModalAula(true);
@@ -281,11 +277,7 @@ export function CursoConteudoPage() {
     const fd = new FormData();
     fd.append("titulo", formAula.titulo);
     fd.append("descricao", formAula.descricao);
-    fd.append("ordem", String(formAula.ordem));
     fd.append("ativo", formAula.ativo ? "true" : "false");
-    if (formAula.duracao_segundos !== "" && formAula.duracao_segundos != null) {
-      fd.append("duracao_segundos", String(formAula.duracao_segundos));
-    }
     if (formAula.videoFile) fd.append("video", formAula.videoFile);
     try {
       if (editAula) {
@@ -314,6 +306,90 @@ export function CursoConteudoPage() {
     if (!access || !confirm(`Excluir (inativar) a aula "${a.titulo}"?`)) return;
     await apiRequest(`/admin/aulas/${a.id}/`, { method: "DELETE", token: access });
     if (moduloSel != null) await carregarModuloExtra(moduloSel);
+  }
+
+  const [dragModuloId, setDragModuloId] = useState<number | null>(null);
+  const [dragAulaId, setDragAulaId] = useState<number | null>(null);
+
+  async function reordenarModulos(ids: number[]) {
+    if (!access || !cursoId) return;
+    setModulos((prev) => {
+      const map = new Map(prev.map((m) => [m.id, m]));
+      return ids.map((id, i) => ({ ...map.get(id)!, ordem: i })).filter(Boolean);
+    });
+    try {
+      await apiRequest(`/admin/cursos/${cursoId}/modulos/reordenar/`, {
+        method: "POST",
+        token: access,
+        body: { ids },
+      });
+      await carregarCursoEModulos();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao reordenar módulos");
+      await carregarCursoEModulos();
+    }
+  }
+
+  async function reordenarAulas(ids: number[]) {
+    if (!access || moduloSel == null) return;
+    setAulas((prev) => {
+      const map = new Map(prev.map((a) => [a.id, a]));
+      return ids.map((id, i) => ({ ...map.get(id)!, ordem: i })).filter(Boolean);
+    });
+    try {
+      await apiRequest(`/admin/modulos/${moduloSel}/aulas/reordenar/`, {
+        method: "POST",
+        token: access,
+        body: { ids },
+      });
+      await carregarModuloExtra(moduloSel);
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao reordenar aulas");
+      await carregarModuloExtra(moduloSel);
+    }
+  }
+
+  function onDropModulo(targetId: number) {
+    if (dragModuloId == null || dragModuloId === targetId) {
+      setDragModuloId(null);
+      return;
+    }
+    const ids = modulos.map((m) => m.id);
+    const from = ids.indexOf(dragModuloId);
+    const to = ids.indexOf(targetId);
+    if (from < 0 || to < 0) {
+      setDragModuloId(null);
+      return;
+    }
+    ids.splice(from, 1);
+    ids.splice(to, 0, dragModuloId);
+    setDragModuloId(null);
+    reordenarModulos(ids);
+  }
+
+  function onDropAula(targetId: number) {
+    if (dragAulaId == null || dragAulaId === targetId) {
+      setDragAulaId(null);
+      return;
+    }
+    const ids = aulas.map((a) => a.id);
+    const from = ids.indexOf(dragAulaId);
+    const to = ids.indexOf(targetId);
+    if (from < 0 || to < 0) {
+      setDragAulaId(null);
+      return;
+    }
+    ids.splice(from, 1);
+    ids.splice(to, 0, dragAulaId);
+    setDragAulaId(null);
+    reordenarAulas(ids);
+  }
+
+  function formatDuracao(seg: number | null | undefined): string {
+    if (seg == null || seg <= 0) return "—";
+    const m = Math.floor(seg / 60);
+    const s = seg % 60;
+    return m > 0 ? `${m}m ${s.toString().padStart(2, "0")}s` : `${s}s`;
   }
 
   async function salvarMaterial(e: FormEvent) {
@@ -664,8 +740,8 @@ export function CursoConteudoPage() {
         </button>
       </div>
       <p className="page-lead">
-        Curso → módulos. Ao abrir um módulo: aulas, materiais e atividades. Fora do módulo: prova
-        avaliadora do curso (certificado).
+        Curso → módulos (arraste para reordenar). No módulo: aulas, materiais e atividades.
+        Vídeo: duração e conversão .webm automáticas. Prova avaliadora fora do módulo.
       </p>
       {erro && <p className="form-erro">{erro}</p>}
 
@@ -684,8 +760,8 @@ export function CursoConteudoPage() {
             <table className="data-table">
               <thead>
                 <tr>
+                  <th className="td-drag" aria-label="Arrastar"></th>
                   <th>Módulo</th>
-                  <th>Ord.</th>
                   <th>Status</th>
                   <th></th>
                 </tr>
@@ -695,10 +771,23 @@ export function CursoConteudoPage() {
                   <tr
                     key={m.id}
                     className={moduloSel === m.id ? "row-selected" : undefined}
+                    draggable
+                    onDragStart={(e) => {
+                      setDragModuloId(m.id);
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onDropModulo(m.id);
+                    }}
                     onClick={() => selecionarModulo(m.id)}
                   >
+                    <td className="td-drag" title="Arraste para reordenar">
+                      ⋮⋮
+                    </td>
                     <td>{m.titulo}</td>
-                    <td>{m.ordem}</td>
                     <td>
                       <span className={`badge ${m.ativo ? "badge--ok" : "badge--off"}`}>
                         {m.ativo ? "Ativo" : "Off"}
@@ -767,14 +856,31 @@ export function CursoConteudoPage() {
                   <table className="data-table">
                     <thead>
                       <tr>
+                        <th className="td-drag" aria-label="Arrastar"></th>
                         <th>Título</th>
                         <th>Vídeo</th>
+                        <th>Duração</th>
                         <th></th>
                       </tr>
                     </thead>
                     <tbody>
                       {aulas.map((a) => (
-                        <tr key={a.id}>
+                        <tr
+                          key={a.id}
+                          draggable
+                          onDragStart={(e) => {
+                            setDragAulaId(a.id);
+                            e.dataTransfer.effectAllowed = "move";
+                          }}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            onDropAula(a.id);
+                          }}
+                        >
+                          <td className="td-drag" title="Arraste para reordenar">
+                            ⋮⋮
+                          </td>
                           <td>
                             {a.titulo}{" "}
                             <span className={`badge ${a.ativo ? "badge--ok" : "badge--off"}`}>
@@ -782,6 +888,7 @@ export function CursoConteudoPage() {
                             </span>
                           </td>
                           <td>{a.video_url ? "Sim" : "—"}</td>
+                          <td>{formatDuracao(a.duracao_segundos)}</td>
                           <td className="td-actions">
                             <button
                               type="button"
@@ -802,7 +909,7 @@ export function CursoConteudoPage() {
                       ))}
                       {aulas.length === 0 && (
                         <tr>
-                          <td colSpan={3}>Nenhuma aula.</td>
+                          <td colSpan={5}>Nenhuma aula.</td>
                         </tr>
                       )}
                     </tbody>
@@ -1011,16 +1118,6 @@ export function CursoConteudoPage() {
               required
             />
           </label>
-          <label>
-            Ordem
-            <input
-              type="number"
-              value={formModulo.ordem}
-              onChange={(e) =>
-                setFormModulo({ ...formModulo, ordem: Number(e.target.value) })
-              }
-            />
-          </label>
           <label className="check-row">
             <input
               type="checkbox"
@@ -1031,6 +1128,9 @@ export function CursoConteudoPage() {
             />
             Ativo
           </label>
+          <p className="page-lead" style={{ margin: 0, fontSize: "0.85rem" }}>
+            A ordem é definida ao criar; arraste na lista para reordenar.
+          </p>
           <button className="btn btn--primary" type="submit" disabled={salvando}>
             {salvando ? "Salvando…" : "Salvar"}
           </button>
@@ -1069,29 +1169,16 @@ export function CursoConteudoPage() {
               }
             />
           </label>
-          <label>
-            Duração (segundos)
-            <input
-              type="number"
-              value={formAula.duracao_segundos}
-              onChange={(e) =>
-                setFormAula({
-                  ...formAula,
-                  duracao_segundos: e.target.value === "" ? "" : Number(e.target.value),
-                })
-              }
-            />
-          </label>
-          <label>
-            Ordem
-            <input
-              type="number"
-              value={formAula.ordem}
-              onChange={(e) =>
-                setFormAula({ ...formAula, ordem: Number(e.target.value) })
-              }
-            />
-          </label>
+          {editAula?.duracao_segundos != null && (
+            <p className="page-lead" style={{ margin: 0, fontSize: "0.85rem" }}>
+              Duração atual: {formatDuracao(editAula.duracao_segundos)} (calculada pelo
+              sistema)
+            </p>
+          )}
+          <p className="page-lead" style={{ margin: 0, fontSize: "0.85rem" }}>
+            Ao enviar .mp4, o servidor mede a duração e converte para .webm quando possível.
+            Ordem: arraste na lista de aulas.
+          </p>
           <label className="check-row">
             <input
               type="checkbox"
@@ -1101,7 +1188,7 @@ export function CursoConteudoPage() {
             Ativo
           </label>
           <button className="btn btn--primary" type="submit" disabled={salvando}>
-            {salvando ? "Salvando…" : "Salvar"}
+            {salvando ? (formAula.videoFile ? "Processando vídeo…" : "Salvando…") : "Salvar"}
           </button>
         </form>
       </Modal>

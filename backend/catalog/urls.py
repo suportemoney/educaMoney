@@ -5,9 +5,11 @@ from .admin_views import (
     AdminAulaListCreateView,
     AdminCursoDetailView,
     AdminCursoListCreateView,
+    AdminCursoModulosReordenarView,
     AdminInstrutorListView,
     AdminIntegracaoDetailView,
     AdminIntegracaoListCreateView,
+    AdminModuloAulasReordenarView,
     AdminModuloDetailView,
     AdminModuloListCreateView,
     AdminPlanoDetailView,
@@ -122,6 +124,11 @@ admin_urlpatterns = [
         name="admin-curso-modulos",
     ),
     path(
+        "cursos/<int:curso_id>/modulos/reordenar/",
+        AdminCursoModulosReordenarView.as_view(),
+        name="admin-curso-modulos-reordenar",
+    ),
+    path(
         "modulos/<int:pk>/",
         AdminModuloDetailView.as_view(),
         name="admin-modulo-detail",
@@ -130,6 +137,11 @@ admin_urlpatterns = [
         "modulos/<int:modulo_id>/aulas/",
         AdminAulaListCreateView.as_view(),
         name="admin-modulo-aulas",
+    ),
+    path(
+        "modulos/<int:modulo_id>/aulas/reordenar/",
+        AdminModuloAulasReordenarView.as_view(),
+        name="admin-modulo-aulas-reordenar",
     ),
     path(
         "modulos/<int:modulo_id>/materiais/",

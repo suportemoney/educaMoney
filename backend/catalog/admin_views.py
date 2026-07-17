@@ -28,6 +28,37 @@ from .serializers import (
     TokenKeySerializer,
 )
 from .soft_delete import soft_delete_ativo
+from .video_process import processar_video_aula
+
+
+def _proxima_ordem(qs) -> int:
+    ultimo = qs.order_by("-ordem", "-id").values_list("ordem", flat=True).first()
+    return (ultimo if ultimo is not None else -1) + 1
+
+
+def _reordenar(qs, ids: list[int]) -> Response:
+    """Aplica ordem 0..n-1 na sequência de ids (mesmo queryset escopo)."""
+    if not isinstance(ids, list) or not ids:
+        return Response(
+            {"ids": ["Informe a lista de ids na nova ordem."]},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
+        ids_int = [int(x) for x in ids]
+    except (TypeError, ValueError):
+        return Response(
+            {"ids": ["Ids inválidos."]},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    existentes = set(qs.filter(pk__in=ids_int).values_list("id", flat=True))
+    if set(ids_int) != existentes or len(ids_int) != len(existentes):
+        return Response(
+            {"ids": ["A lista deve conter exatamente os itens do escopo."]},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    for i, pk in enumerate(ids_int):
+        qs.filter(pk=pk).update(ordem=i)
+    return Response({"ok": True, "ids": ids_int})
 
 
 class AdminPlanoListCreateView(generics.ListCreateAPIView):
@@ -168,7 +199,9 @@ class AdminModuloListCreateView(APIView):
         curso = get_object_or_404(Curso, pk=curso_id)
         ser = ModuloAdminSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        modulo = Modulo.objects.create(curso=curso, **ser.validated_data)
+        data = dict(ser.validated_data)
+        data["ordem"] = _proxima_ordem(Modulo.objects.filter(curso=curso))
+        modulo = Modulo.objects.create(curso=curso, **data)
         return Response(
             ModuloAdminSerializer(modulo).data, status=status.HTTP_201_CREATED
         )
@@ -190,6 +223,17 @@ class AdminModuloDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class AdminCursoModulosReordenarView(APIView):
+    """Kanban: reordena módulos do curso. Body: {\"ids\": [3,1,2]}."""
+
+    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+
+    def post(self, request, curso_id):
+        curso = get_object_or_404(Curso, pk=curso_id)
+        qs = Modulo.objects.filter(curso=curso, ativo=True)
+        return _reordenar(qs, request.data.get("ids"))
+
+
 class AdminAulaListCreateView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
@@ -207,7 +251,12 @@ class AdminAulaListCreateView(APIView):
         modulo = get_object_or_404(Modulo, pk=modulo_id)
         ser = AulaAdminSerializer(data=request.data, context={"request": request})
         ser.is_valid(raise_exception=True)
-        aula = Aula.objects.create(modulo=modulo, **ser.validated_data)
+        data = dict(ser.validated_data)
+        data["ordem"] = _proxima_ordem(Aula.objects.filter(modulo=modulo))
+        aula = Aula.objects.create(modulo=modulo, **data)
+        if aula.video:
+            processar_video_aula(aula)
+            aula.refresh_from_db()
         return Response(
             AulaAdminSerializer(aula, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
@@ -220,17 +269,39 @@ class AdminAulaDetailView(APIView):
 
     def patch(self, request, pk):
         aula = get_object_or_404(Aula, pk=pk)
+        tinha_video = bool(aula.video)
+        nome_antes = aula.video.name if aula.video else None
         ser = AulaAdminSerializer(
             aula, data=request.data, partial=True, context={"request": request}
         )
         ser.is_valid(raise_exception=True)
         ser.save()
-        return Response(ser.data)
+        aula.refresh_from_db()
+        video_novo = bool(aula.video) and (
+            not tinha_video or aula.video.name != nome_antes
+        )
+        if video_novo:
+            processar_video_aula(aula)
+            aula.refresh_from_db()
+        return Response(
+            AulaAdminSerializer(aula, context={"request": request}).data
+        )
 
     def delete(self, request, pk):
         aula = get_object_or_404(Aula, pk=pk)
         soft_delete_ativo(aula)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AdminModuloAulasReordenarView(APIView):
+    """Kanban: reordena aulas do módulo. Body: {\"ids\": [3,1,2]}."""
+
+    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+
+    def post(self, request, modulo_id):
+        modulo = get_object_or_404(Modulo, pk=modulo_id)
+        qs = Aula.objects.filter(modulo=modulo, ativo=True)
+        return _reordenar(qs, request.data.get("ids"))
 
 
 def _gerar_codigo_token() -> str:

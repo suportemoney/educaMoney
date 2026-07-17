@@ -1268,6 +1268,23 @@ a {
   cursor: pointer;
 }
 
+.td-drag {
+  width: 2rem;
+  text-align: center;
+  cursor: grab;
+  color: var(--em-muted);
+  user-select: none;
+  letter-spacing: -0.15em;
+}
+
+.data-table tbody tr[draggable="true"] {
+  cursor: grab;
+}
+
+.data-table tbody tr[draggable="true"]:active {
+  cursor: grabbing;
+}
+
 .alt-list {
   margin: 0 0 0.35rem;
   padding-left: 1.1rem;

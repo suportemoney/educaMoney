@@ -7,7 +7,7 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libpq5 git \
+    && apt-get install -y --no-install-recommends libpq5 git ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Versão automática a partir do Git (fora do bind-mount /app)

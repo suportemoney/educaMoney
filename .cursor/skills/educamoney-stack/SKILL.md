@@ -32,7 +32,7 @@ Só o Nginx publica a porta **80**. Não expor 5173/5174/5175 no host.
 - `ALUNO_PORTAL_URL` (backend handoff)
 - `VITE_ALUNO_PORTAL_URL` (landing)
 - `VITE_API_BASE_URL` (default `/api`)
-- `EMAIL_ENABLED`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL`, `SECRETARIA_NOTIFY_EMAIL`
+- `EMAIL_ENABLED`, `EMAIL_HOST`, … — fallback se não houver integração E-mail ativa no painel (Integração → Novo e-mail)
 
 ## Docs
 

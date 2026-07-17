@@ -256,9 +256,16 @@ export type TokenKey = {
 
 export type Integracao = {
   id: number;
-  tipo: "whatsapp";
+  tipo: "whatsapp" | "email";
   telefone: string;
   mensagem_template: string;
+  email_host?: string;
+  email_port?: number;
+  email_usuario?: string;
+  email_senha_definida?: boolean;
+  email_usar_tls?: boolean;
+  email_remetente?: string;
+  email_secretaria?: string;
   ativo: boolean;
   criado_em?: string;
   atualizado_em?: string;

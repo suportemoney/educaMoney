@@ -260,6 +260,12 @@ class ConfigSistemaSerializer(serializers.ModelSerializer):
 
 
 class IntegracaoSerializer(serializers.ModelSerializer):
+    # Senha nunca volta completa; só flag se já há senha salva
+    email_senha = serializers.CharField(
+        write_only=True, required=False, allow_blank=True
+    )
+    email_senha_definida = serializers.SerializerMethodField()
+
     class Meta:
         model = Integracao
         fields = (
@@ -267,14 +273,27 @@ class IntegracaoSerializer(serializers.ModelSerializer):
             "tipo",
             "telefone",
             "mensagem_template",
+            "email_host",
+            "email_port",
+            "email_usuario",
+            "email_senha",
+            "email_senha_definida",
+            "email_usar_tls",
+            "email_remetente",
+            "email_secretaria",
             "ativo",
             "criado_em",
             "atualizado_em",
         )
-        read_only_fields = ("criado_em", "atualizado_em")
+        read_only_fields = ("criado_em", "atualizado_em", "email_senha_definida")
+
+    def get_email_senha_definida(self, obj):
+        return bool(obj.email_senha)
 
     def validate_telefone(self, value):
         limpo = re.sub(r"[\s\-\(\)]", "", (value or "").strip())
+        if not limpo:
+            return ""
         if not re.fullmatch(r"\+55\d{10,11}", limpo):
             raise serializers.ValidationError(
                 "Informe o telefone com +55 e o número completo (DDD + celular), "
@@ -282,28 +301,74 @@ class IntegracaoSerializer(serializers.ModelSerializer):
             )
         return limpo
 
-    def validate_mensagem_template(self, value):
-        texto = (value or "").strip()
-        if not texto:
-            raise serializers.ValidationError("Informe a mensagem automática.")
-        return texto
+    def validate(self, attrs):
+        tipo = attrs.get("tipo") or getattr(self.instance, "tipo", Integracao.Tipo.WHATSAPP)
+        if tipo == Integracao.Tipo.WHATSAPP:
+            telefone = attrs.get("telefone")
+            if telefone is None and self.instance:
+                telefone = self.instance.telefone
+            if not telefone:
+                raise serializers.ValidationError(
+                    {"telefone": "Informe o telefone WhatsApp (+55…)."}
+                )
+            msg = attrs.get("mensagem_template")
+            if msg is None and self.instance:
+                msg = self.instance.mensagem_template
+            if not (msg or "").strip():
+                raise serializers.ValidationError(
+                    {"mensagem_template": "Informe a mensagem automática."}
+                )
+        elif tipo == Integracao.Tipo.EMAIL:
+            host = attrs.get("email_host")
+            if host is None and self.instance:
+                host = self.instance.email_host
+            if not (host or "").strip():
+                raise serializers.ValidationError(
+                    {"email_host": "Informe o servidor SMTP."}
+                )
+            remetente = attrs.get("email_remetente")
+            if remetente is None and self.instance:
+                remetente = self.instance.email_remetente
+            if not (remetente or "").strip():
+                raise serializers.ValidationError(
+                    {"email_remetente": "Informe o e-mail remetente."}
+                )
+            # Senha obrigatória na criação
+            if self.instance is None:
+                senha = attrs.get("email_senha") or ""
+                if not senha.strip():
+                    raise serializers.ValidationError(
+                        {"email_senha": "Informe a senha SMTP."}
+                    )
+        return attrs
 
     def create(self, validated_data):
-        validated_data.setdefault("tipo", Integracao.Tipo.WHATSAPP)
+        tipo = validated_data.get("tipo", Integracao.Tipo.WHATSAPP)
+        if tipo == Integracao.Tipo.EMAIL:
+            validated_data.setdefault("telefone", "")
+            validated_data.setdefault("mensagem_template", "")
+        else:
+            validated_data.setdefault("tipo", Integracao.Tipo.WHATSAPP)
         integracao = super().create(validated_data)
-        if integracao.ativo:
-            Integracao.objects.filter(tipo=Integracao.Tipo.WHATSAPP).exclude(
-                pk=integracao.pk
-            ).update(ativo=False)
+        self._desativar_outras(integracao)
         return integracao
 
     def update(self, instance, validated_data):
+        # Senha em branco = mantém a atual
+        if "email_senha" in validated_data and not (
+            validated_data.get("email_senha") or ""
+        ).strip():
+            validated_data.pop("email_senha")
         integracao = super().update(instance, validated_data)
-        if integracao.ativo:
-            Integracao.objects.filter(tipo=Integracao.Tipo.WHATSAPP).exclude(
-                pk=integracao.pk
-            ).update(ativo=False)
+        self._desativar_outras(integracao)
         return integracao
+
+    def _desativar_outras(self, integracao: Integracao) -> None:
+        if not integracao.ativo:
+            return
+        Integracao.objects.filter(tipo=integracao.tipo).exclude(
+            pk=integracao.pk
+        ).update(ativo=False)
 
 
 class TokenKeySerializer(serializers.ModelSerializer):

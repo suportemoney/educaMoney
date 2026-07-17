@@ -24,7 +24,7 @@ Toda tela do `frontend-admin` que gerencia entidades com criação deve seguir C
 
 - **Dashboard** — só leitura de métricas
 - **Tokens** — C no modal (Gerar), D = **Revogar** (sem editar código)
-- **Integração WhatsApp** — CRUD completo; criar pede telefone `+55…` e mensagem com variáveis `{titulo_plano}`, `{valor_plano}`, `{nome_site}`
+- **Integração** — CRUD WhatsApp (telefone `+55…` + mensagem com `{titulo_plano}`, `{valor_plano}`, `{nome_site}`) e CRUD E-mail SMTP (host, porta, usuário, senha, remetente, secretaria); só uma ativa por tipo
 
 ## Componentes
 

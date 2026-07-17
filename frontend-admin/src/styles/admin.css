@@ -470,6 +470,13 @@ a {
   margin-bottom: 0.35rem;
 }
 
+.page-head__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 .metric-grid {
   display: grid;
   gap: 1rem;

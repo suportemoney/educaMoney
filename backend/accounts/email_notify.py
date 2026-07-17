@@ -1,6 +1,6 @@
 """
-Envio de e-mails operacionais (síncrono ou thread leve).
-Respeita EMAIL_ENABLED — ambientes sem SMTP não quebram.
+Envio de e-mails operacionais (thread leve).
+Prioridade: integração E-mail ativa no painel; fallback settings/.env.
 """
 from __future__ import annotations
 
@@ -9,29 +9,76 @@ import threading
 from typing import Iterable
 
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import get_connection, send_mail
 
 logger = logging.getLogger(__name__)
 
 
-def _email_ativo() -> bool:
-    return bool(getattr(settings, "EMAIL_ENABLED", False))
+def _cfg_email():
+    """
+    Retorna dict com config SMTP ou None se e-mail desligado.
+    Preferência: Integracao tipo email ativa no banco.
+    """
+    try:
+        from catalog.models import Integracao
+
+        row = Integracao.email_ativa()
+    except Exception:
+        row = None
+
+    if row:
+        return {
+            "host": row.email_host,
+            "port": row.email_port or 587,
+            "username": row.email_usuario or "",
+            "password": row.email_senha or "",
+            "use_tls": bool(row.email_usar_tls),
+            "from_email": row.email_remetente
+            or "EducaMoney <noreply@educamoney.local>",
+            "secretaria": row.email_secretaria or "",
+        }
+
+    if not getattr(settings, "EMAIL_ENABLED", False):
+        return None
+
+    return {
+        "host": getattr(settings, "EMAIL_HOST", "localhost"),
+        "port": int(getattr(settings, "EMAIL_PORT", 587) or 587),
+        "username": getattr(settings, "EMAIL_HOST_USER", "") or "",
+        "password": getattr(settings, "EMAIL_HOST_PASSWORD", "") or "",
+        "use_tls": bool(getattr(settings, "EMAIL_USE_TLS", True)),
+        "from_email": getattr(
+            settings, "DEFAULT_FROM_EMAIL", "EducaMoney <noreply@educamoney.local>"
+        ),
+        "secretaria": getattr(settings, "SECRETARIA_NOTIFY_EMAIL", "") or "",
+    }
 
 
 def _enviar_async(assunto: str, corpo: str, destinatarios: Iterable[str]) -> None:
     destinatarios = [e.strip() for e in destinatarios if e and str(e).strip()]
-    if not destinatarios or not _email_ativo():
+    cfg = _cfg_email()
+    if not destinatarios or not cfg:
         return
 
-    from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@educamoney.local")
+    from_email = cfg["from_email"]
 
     def _run() -> None:
         try:
+            conn = get_connection(
+                backend="django.core.mail.backends.smtp.EmailBackend",
+                host=cfg["host"],
+                port=cfg["port"],
+                username=cfg["username"] or None,
+                password=cfg["password"] or None,
+                use_tls=cfg["use_tls"],
+                fail_silently=True,
+            )
             send_mail(
                 subject=assunto,
                 message=corpo,
                 from_email=from_email,
                 recipient_list=list(destinatarios),
+                connection=conn,
                 fail_silently=True,
             )
         except Exception:
@@ -41,8 +88,9 @@ def _enviar_async(assunto: str, corpo: str, destinatarios: Iterable[str]) -> Non
 
 
 def notificar_ticket_aberto(ticket) -> None:
-    """Novo ticket → staff (SECRETARIA_NOTIFY_EMAIL)."""
-    dest = getattr(settings, "SECRETARIA_NOTIFY_EMAIL", "") or ""
+    """Novo ticket → staff (e-mail da secretaria na integração)."""
+    cfg = _cfg_email()
+    dest = (cfg or {}).get("secretaria") or ""
     aluno = ticket.usuario
     nome = aluno.get_full_name() or aluno.username
     _enviar_async(
@@ -91,7 +139,11 @@ def notificar_certificado_emitido(certificado) -> None:
 def notificar_plano_vencendo(ativacao, dias: int) -> None:
     """Aviso de vencimento próximo → aluno."""
     email = getattr(ativacao.usuario, "email", "") or ""
-    plano = ativacao.plano.titulo if ativacao.plano_id else "seu plano"
+    plano = (
+        ativacao.plano.nome
+        if ativacao.plano_id and getattr(ativacao.plano, "nome", None)
+        else "seu plano"
+    )
     valido = (
         ativacao.valido_ate.strftime("%d/%m/%Y")
         if ativacao.valido_ate

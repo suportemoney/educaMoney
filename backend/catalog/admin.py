@@ -31,7 +31,7 @@ class ConfigSistemaAdmin(admin.ModelAdmin):
 
 @admin.register(Integracao)
 class IntegracaoAdmin(admin.ModelAdmin):
-    list_display = ("tipo", "telefone", "ativo", "atualizado_em")
+    list_display = ("tipo", "telefone", "email_remetente", "ativo", "atualizado_em")
     list_filter = ("tipo", "ativo")
 
 

@@ -228,23 +228,53 @@ MENSAGEM_WHATSAPP_PADRAO = (
 
 
 class Integracao(models.Model):
-    """Integrações externas (ex.: WhatsApp da landing)."""
+    """Integrações externas (WhatsApp da landing / SMTP de e-mail)."""
 
     class Tipo(models.TextChoices):
         WHATSAPP = "whatsapp", "WhatsApp"
+        EMAIL = "email", "E-mail"
 
     tipo = models.CharField(
         "tipo", max_length=20, choices=Tipo.choices, default=Tipo.WHATSAPP
     )
+    # WhatsApp
     telefone = models.CharField(
         "telefone",
         max_length=20,
+        blank=True,
+        default="",
         help_text="Formato +55 e número completo (DDD + celular).",
     )
     mensagem_template = models.TextField(
         "mensagem automática",
+        blank=True,
         default=MENSAGEM_WHATSAPP_PADRAO,
         help_text="Use variáveis entre chaves, ex.: {titulo_plano}, {valor_plano}.",
+    )
+    # SMTP (tipo e-mail)
+    email_host = models.CharField(
+        "servidor SMTP", max_length=255, blank=True, default=""
+    )
+    email_port = models.PositiveIntegerField("porta SMTP", default=587)
+    email_usuario = models.CharField(
+        "usuário SMTP", max_length=255, blank=True, default=""
+    )
+    email_senha = models.CharField(
+        "senha SMTP", max_length=255, blank=True, default=""
+    )
+    email_usar_tls = models.BooleanField("usar TLS", default=True)
+    email_remetente = models.CharField(
+        "e-mail remetente",
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Ex.: EducaMoney <noreply@seudominio.com>",
+    )
+    email_secretaria = models.EmailField(
+        "e-mail da secretaria",
+        blank=True,
+        default="",
+        help_text="Recebe aviso quando o aluno abre um ticket.",
     )
     ativo = models.BooleanField("ativo", default=True)
     criado_em = models.DateTimeField(auto_now_add=True)
@@ -256,11 +286,17 @@ class Integracao(models.Model):
         verbose_name_plural = "integrações"
 
     def __str__(self):
+        if self.tipo == self.Tipo.EMAIL:
+            return f"E-mail {self.email_remetente or self.email_host}"
         return f"{self.get_tipo_display()} {self.telefone}"
 
     @classmethod
     def whatsapp_ativa(cls):
         return cls.objects.filter(tipo=cls.Tipo.WHATSAPP, ativo=True).first()
+
+    @classmethod
+    def email_ativa(cls):
+        return cls.objects.filter(tipo=cls.Tipo.EMAIL, ativo=True).first()
 
 class TokenKey(models.Model):
     class Status(models.TextChoices):

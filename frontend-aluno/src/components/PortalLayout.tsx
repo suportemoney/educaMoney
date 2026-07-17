@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { apiRequest, type Ativacao } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 
@@ -148,6 +148,16 @@ export function PortalLayout() {
           </button>
         </header>
         <main className="portal-content">
+          {user && user.dados_certificado_completos === false && (
+            <div className="portal-banner" role="status">
+              <p>
+                Complete seus dados de certificado no perfil para emitir diplomas.
+              </p>
+              <Link to="/perfil" className="btn btn--ghost btn--small">
+                Ir ao perfil
+              </Link>
+            </div>
+          )}
           <Outlet />
         </main>
       </div>

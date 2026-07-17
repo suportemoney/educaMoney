@@ -542,6 +542,23 @@ a:hover {
   border-top: 1px solid var(--em-line);
 }
 
+.site-footer__links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem 1.25rem;
+  margin: 0.85rem 0 0.35rem;
+}
+
+.site-footer__links a {
+  color: var(--em-blue);
+  font-size: 0.88rem;
+}
+
+.site-footer__links a:hover {
+  color: var(--em-green);
+}
+
 .site-footer__version {
   margin: 0.35rem 0 0;
   font-family: var(--font-display);
@@ -549,6 +566,102 @@ a:hover {
   letter-spacing: 0.06em;
   color: var(--em-blue);
   text-shadow: 0 0 10px rgba(94, 183, 255, 0.25);
+}
+
+/* Páginas legais / validar certificado */
+.legal-page {
+  width: min(720px, 100%);
+  margin: 0 auto;
+  padding: 2rem 1.25rem 3.5rem;
+  flex: 1;
+}
+
+.legal-page h1 {
+  margin: 0 0 0.5rem;
+  font-family: var(--font-display);
+  font-size: clamp(1.45rem, 3vw, 1.85rem);
+  color: var(--em-green);
+}
+
+.legal-page h2 {
+  margin: 1.5rem 0 0.5rem;
+  font-size: 1.05rem;
+  color: var(--em-white);
+}
+
+.legal-page p {
+  margin: 0 0 0.75rem;
+  color: var(--em-muted);
+  line-height: 1.65;
+}
+
+.legal-page__lead {
+  color: var(--em-white) !important;
+  margin-bottom: 1.25rem !important;
+}
+
+.legal-page__muted {
+  font-size: 0.9rem;
+}
+
+.legal-page__back {
+  margin-top: 2rem !important;
+}
+
+.legal-page .auth-form {
+  display: grid;
+  gap: 0.85rem;
+  max-width: 420px;
+  margin-bottom: 1.5rem;
+}
+
+.legal-page .auth-form label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--em-muted);
+  font-size: 0.9rem;
+}
+
+.legal-page .auth-form input {
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--em-line);
+  background: rgba(10, 22, 40, 0.75);
+  color: var(--em-white);
+  font: inherit;
+}
+
+.cert-result {
+  padding: 1.1rem 1.2rem;
+  border-radius: 0.7rem;
+  border: 1px solid var(--em-line);
+  background: rgba(10, 22, 40, 0.65);
+  margin-bottom: 1rem;
+}
+
+.cert-result h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.cert-result--ok {
+  border-color: rgba(57, 255, 158, 0.4);
+}
+
+.cert-result--ok h2 {
+  color: var(--em-green);
+}
+
+.cert-result--bad {
+  border-color: rgba(255, 92, 122, 0.45);
+}
+
+.cert-result--bad h2 {
+  color: var(--em-danger);
+}
+
+.cert-result p {
+  margin: 0.35rem 0 0;
 }
 
 .banner-erro,

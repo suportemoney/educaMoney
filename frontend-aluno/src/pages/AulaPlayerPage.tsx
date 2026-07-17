@@ -568,6 +568,23 @@ export function AulaPlayerPage() {
                         );
                       })}
                     </ul>
+                    {(m.atividades?.length ?? 0) > 0 && (
+                      <ul className="player-mod__atividades" aria-label="Atividades do módulo">
+                        {m.atividades!.map((at) => (
+                          <li key={at.id} className="player-mod__atividade">
+                            <span className="player-mod__mark" aria-hidden>
+                              {at.aprovado ? "✓" : "◇"}
+                            </span>
+                            <span>
+                              {at.titulo}
+                              {at.aprovado ? (
+                                <span className="portal-muted"> · ok</span>
+                              ) : null}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </section>
                 );
               })}

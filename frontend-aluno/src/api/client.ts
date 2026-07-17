@@ -1,5 +1,11 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
 
+export type AvisoAluno = {
+  tipo: string;
+  mensagem: string;
+  dias?: number;
+};
+
 export type User = {
   id: number;
   username: string;
@@ -15,6 +21,7 @@ export type User = {
   documento_tipo?: string;
   documento_url?: string | null;
   dados_certificado_completos?: boolean;
+  avisos?: AvisoAluno[];
   is_superuser: boolean;
   is_active?: boolean;
 };
@@ -116,6 +123,17 @@ export type SubcategoriaAluno = {
   slug: string;
 };
 
+export type ConjuntoCursoAluno = {
+  id: number;
+  titulo: string;
+  icone_url: string | null;
+  icone_key: string;
+  liberado: boolean;
+  capa_url?: string | null;
+  progresso_pct?: number;
+  continuar_aula_id?: number | null;
+};
+
 export type ConjuntoAluno = {
   id: number;
   titulo: string;
@@ -125,13 +143,10 @@ export type ConjuntoAluno = {
   icone_url: string | null;
   icone_key: string;
   ordem: number;
-  cursos: {
-    id: number;
-    titulo: string;
-    icone_url: string | null;
-    icone_key: string;
-    liberado: boolean;
-  }[];
+  progresso_pct?: number;
+  cursos_concluidos?: number;
+  cursos_total?: number;
+  cursos: ConjuntoCursoAluno[];
 };
 
 export type CatalogoResp = {

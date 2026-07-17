@@ -308,6 +308,25 @@ a {
   color: var(--em-muted);
 }
 
+.portal-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(94, 183, 255, 0.35);
+  border-radius: 0.7rem;
+  background: rgba(14, 31, 56, 0.85);
+}
+
+.portal-banner p {
+  margin: 0;
+  color: var(--em-white);
+  font-size: 0.92rem;
+}
+
 .curso-list__head {
   display: flex;
   justify-content: space-between;
@@ -620,6 +639,26 @@ a {
 
 .player-mod__aula-titulo {
   min-width: 0;
+}
+
+.player-mod__atividades {
+  list-style: none;
+  margin: 0.45rem 0 0;
+  padding: 0.35rem 0 0;
+  border-top: 1px dashed rgba(94, 183, 255, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.player-mod__atividade {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.45rem;
+  align-items: start;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.8rem;
+  color: var(--em-muted);
 }
 
 .player-actions {
@@ -1187,6 +1226,50 @@ a {
 .conjunto-card h3 {
   margin: 0.15rem 0 0;
   font-size: 1.1rem;
+  color: var(--em-green);
+}
+
+.conjunto-checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.conjunto-checklist__item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.5rem;
+  align-items: start;
+  padding: 0.4rem 0;
+  border-top: 1px solid rgba(94, 183, 255, 0.12);
+}
+
+.conjunto-checklist__item:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.conjunto-checklist__mark {
+  color: var(--em-green);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.conjunto-checklist__body {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.conjunto-checklist__body a {
+  color: var(--em-white);
+}
+
+.conjunto-checklist__body a:hover {
   color: var(--em-green);
 }
 

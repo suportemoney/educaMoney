@@ -21,6 +21,10 @@ export function LandingPage() {
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
+    document.title = "EducaMoney — educação financeira";
+  }, []);
+
+  useEffect(() => {
     const cache = fetchCacheMode();
     Promise.all([
       apiRequest<Plano[]>("/public/planos/", { cache }),
@@ -142,6 +146,11 @@ export function LandingPage() {
 
       <footer className="site-footer">
         <p>EducaMoney — educação financeira para o dia a dia.</p>
+        <nav className="site-footer__links" aria-label="Institucional">
+          <Link to="/validar-certificado">Validar certificado</Link>
+          <Link to="/termos">Termos</Link>
+          <Link to="/privacidade">Privacidade</Link>
+        </nav>
         <p className="site-footer__version" title="Versão automática do build">
           v{appVersion}
         </p>

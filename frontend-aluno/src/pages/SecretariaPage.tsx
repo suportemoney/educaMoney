@@ -79,22 +79,28 @@ export function SecretariaPage() {
         </section>
         <section className="bento-cell">
           <h2>Seus tickets</h2>
-          <ul className="hist-list">
-            {tickets.map((t) => (
-              <li key={t.id}>
-                <strong>
-                  {t.assunto} · {t.status}
-                </strong>
-                <span className="portal-muted">{t.mensagem}</span>
-                {t.resposta && (
-                  <span className="ticket-reply">Resposta: {t.resposta}</span>
-                )}
-              </li>
-            ))}
-            {tickets.length === 0 && (
-              <li className="portal-muted">Nenhum ticket ainda.</li>
-            )}
-          </ul>
+          {tickets.length === 0 ? (
+            <div className="empty-box empty-box--inline">
+              <p>Nenhum ticket ainda.</p>
+              <p className="portal-muted">
+                Abra um chamado ao lado para falar com a secretaria.
+              </p>
+            </div>
+          ) : (
+            <ul className="hist-list">
+              {tickets.map((t) => (
+                <li key={t.id}>
+                  <strong>
+                    {t.assunto} · {t.status}
+                  </strong>
+                  <span className="portal-muted">{t.mensagem}</span>
+                  {t.resposta && (
+                    <span className="ticket-reply">Resposta: {t.resposta}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       </div>
     </div>

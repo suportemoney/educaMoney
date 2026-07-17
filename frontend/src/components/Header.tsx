@@ -62,6 +62,7 @@ export function Header() {
         <nav className="site-nav" aria-label="Principal">
           <a href="/#planos">Planos</a>
           <a href="/#cursos">Cursos</a>
+          <NavLink to="/validar-certificado">Validar certificado</NavLink>
           {!loading && !user && (
             <>
               <NavLink to="/login">Entrar</NavLink>

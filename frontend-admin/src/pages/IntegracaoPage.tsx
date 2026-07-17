@@ -22,6 +22,34 @@ const EXEMPLO_VARS = {
 };
 
 type TipoForm = "whatsapp" | "email";
+type ProvedorEmail = "gmail" | "hostinger";
+
+/** SMTP pronto — o admin só escolhe o provedor e preenche conta/senha. */
+const PRESETS_EMAIL: Record<
+  ProvedorEmail,
+  { label: string; host: string; port: number; usarTls: boolean; dica: string }
+> = {
+  gmail: {
+    label: "Gmail",
+    host: "smtp.gmail.com",
+    port: 587,
+    usarTls: true,
+    dica: "Use uma senha de app do Google (conta Google → Segurança → Senhas de app).",
+  },
+  hostinger: {
+    label: "Hostinger",
+    host: "smtp.hostinger.com",
+    port: 587,
+    usarTls: true,
+    dica: "Use o e-mail completo criado no hPanel e a senha dessa caixa.",
+  },
+};
+
+function provedorPorHost(host: string): ProvedorEmail {
+  const h = (host || "").toLowerCase();
+  if (h.includes("hostinger")) return "hostinger";
+  return "gmail";
+}
 
 const FORM_WA = {
   telefone: "+55",
@@ -30,12 +58,12 @@ const FORM_WA = {
 };
 
 const FORM_EMAIL = {
-  email_host: "",
-  email_port: 587,
+  email_host: PRESETS_EMAIL.gmail.host,
+  email_port: PRESETS_EMAIL.gmail.port,
   email_usuario: "",
   email_senha: "",
-  email_usar_tls: true,
-  email_remetente: "EducaMoney <noreply@seudominio.com>",
+  email_usar_tls: PRESETS_EMAIL.gmail.usarTls,
+  email_remetente: "",
   email_secretaria: "",
   ativo: true,
 };
@@ -49,7 +77,21 @@ export function IntegracaoPage() {
   const [tipoForm, setTipoForm] = useState<TipoForm>("whatsapp");
   const [formWa, setFormWa] = useState(FORM_WA);
   const [formEmail, setFormEmail] = useState(FORM_EMAIL);
+  const [provedorEmail, setProvedorEmail] = useState<ProvedorEmail>("gmail");
   const [salvando, setSalvando] = useState(false);
+
+  const presetAtual = PRESETS_EMAIL[provedorEmail];
+
+  function aplicarProvedor(p: ProvedorEmail) {
+    const preset = PRESETS_EMAIL[p];
+    setProvedorEmail(p);
+    setFormEmail((prev) => ({
+      ...prev,
+      email_host: preset.host,
+      email_port: preset.port,
+      email_usar_tls: preset.usarTls,
+    }));
+  }
 
   const previewMensagem = useMemo(
     () => aplicarTemplateWhatsApp(formWa.mensagem_template, EXEMPLO_VARS),
@@ -74,6 +116,7 @@ export function IntegracaoPage() {
     setTipoForm(tipo);
     setFormWa(FORM_WA);
     setFormEmail(FORM_EMAIL);
+    setProvedorEmail("gmail");
     setErro(null);
     setModalAberto(true);
   }
@@ -83,12 +126,15 @@ export function IntegracaoPage() {
     setTipoForm(item.tipo);
     setErro(null);
     if (item.tipo === "email") {
+      const p = provedorPorHost(item.email_host || "");
+      const preset = PRESETS_EMAIL[p];
+      setProvedorEmail(p);
       setFormEmail({
-        email_host: item.email_host || "",
-        email_port: item.email_port || 587,
+        email_host: preset.host,
+        email_port: preset.port,
         email_usuario: item.email_usuario || "",
         email_senha: "",
-        email_usar_tls: item.email_usar_tls !== false,
+        email_usar_tls: preset.usarTls,
         email_remetente: item.email_remetente || "",
         email_secretaria: item.email_secretaria || "",
         ativo: item.ativo,
@@ -135,11 +181,11 @@ export function IntegracaoPage() {
             tipo: "email" as const,
             telefone: "",
             mensagem_template: "",
-            email_host: formEmail.email_host,
-            email_port: Number(formEmail.email_port) || 587,
+            email_host: PRESETS_EMAIL[provedorEmail].host,
+            email_port: PRESETS_EMAIL[provedorEmail].port,
             email_usuario: formEmail.email_usuario,
             email_senha: formEmail.email_senha,
-            email_usar_tls: formEmail.email_usar_tls,
+            email_usar_tls: PRESETS_EMAIL[provedorEmail].usarTls,
             email_remetente: formEmail.email_remetente,
             email_secretaria: formEmail.email_secretaria,
             ativo: formEmail.ativo,
@@ -190,8 +236,9 @@ export function IntegracaoPage() {
 
   function detalheLinha(item: Integracao): string {
     if (item.tipo === "email") {
+      const nome = provedorPorHost(item.email_host || "") === "hostinger" ? "Hostinger" : "Gmail";
       const sec = item.email_secretaria ? ` · secretaria: ${item.email_secretaria}` : "";
-      return `${item.email_host}:${item.email_port}${sec}`;
+      return `${nome} (${item.email_host})${sec}`;
     }
     return item.mensagem_template;
   }
@@ -335,50 +382,52 @@ export function IntegracaoPage() {
             </>
           ) : (
             <>
+              <label>
+                Provedor
+                <select
+                  value={provedorEmail}
+                  onChange={(e) => aplicarProvedor(e.target.value as ProvedorEmail)}
+                >
+                  <option value="gmail">Gmail</option>
+                  <option value="hostinger">Hostinger</option>
+                </select>
+              </label>
               <p className="form-hint">
-                Dados do servidor SMTP do provedor (Gmail, Outlook, Hostinger, etc.). Com
-                “Ativa”, o sistema envia os avisos operacionais.
+                {presetAtual.dica} Servidor: <code>{presetAtual.host}</code> · porta{" "}
+                {presetAtual.port} (TLS).
               </p>
               <label>
-                Servidor SMTP
+                E-mail da conta (usuário SMTP)
                 <input
-                  value={formEmail.email_host}
-                  onChange={(e) =>
-                    setFormEmail({ ...formEmail, email_host: e.target.value })
-                  }
-                  placeholder="smtp.seudominio.com"
-                  required
-                />
-              </label>
-              <label>
-                Porta
-                <input
-                  type="number"
-                  min={1}
-                  max={65535}
-                  value={formEmail.email_port}
-                  onChange={(e) =>
-                    setFormEmail({
-                      ...formEmail,
-                      email_port: Number(e.target.value) || 587,
-                    })
-                  }
-                  required
-                />
-              </label>
-              <label>
-                Usuário SMTP
-                <input
+                  type="email"
                   value={formEmail.email_usuario}
-                  onChange={(e) =>
-                    setFormEmail({ ...formEmail, email_usuario: e.target.value })
+                  onChange={(e) => {
+                    const usuario = e.target.value;
+                    setFormEmail((prev) => ({
+                      ...prev,
+                      email_usuario: usuario,
+                      // Preenche remetente se ainda vazio ou espelhava o usuário anterior
+                      email_remetente:
+                        !prev.email_remetente ||
+                        prev.email_remetente === prev.email_usuario ||
+                        prev.email_remetente === `EducaMoney <${prev.email_usuario}>`
+                          ? usuario
+                            ? `EducaMoney <${usuario}>`
+                            : ""
+                          : prev.email_remetente,
+                    }));
+                  }}
+                  placeholder={
+                    provedorEmail === "gmail"
+                      ? "seuemail@gmail.com"
+                      : "noreply@seudominio.com"
                   }
-                  placeholder="noreply@seudominio.com"
+                  required
                   autoComplete="off"
                 />
               </label>
               <label>
-                Senha SMTP
+                Senha
                 <input
                   type="password"
                   value={formEmail.email_senha}
@@ -388,7 +437,9 @@ export function IntegracaoPage() {
                   placeholder={
                     editando?.email_senha_definida
                       ? "Deixe em branco para manter a senha atual"
-                      : "Senha do SMTP"
+                      : provedorEmail === "gmail"
+                        ? "Senha de app do Google"
+                        : "Senha do e-mail Hostinger"
                   }
                   autoComplete="new-password"
                   required={!editando}
@@ -415,16 +466,6 @@ export function IntegracaoPage() {
                   }
                   placeholder="secretaria@seudominio.com"
                 />
-              </label>
-              <label className="check-row">
-                <input
-                  type="checkbox"
-                  checked={formEmail.email_usar_tls}
-                  onChange={(e) =>
-                    setFormEmail({ ...formEmail, email_usar_tls: e.target.checked })
-                  }
-                />
-                Usar TLS
               </label>
               <label className="check-row">
                 <input

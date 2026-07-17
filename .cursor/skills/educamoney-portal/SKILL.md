@@ -21,7 +21,7 @@ description: >-
 - `/` dashboard bento (grid) + certificados
 - `/meus-cursos` biblioteca LMS: capa, chips de status, continuar → player, debounce busca
 - `/meus-cursos/:cursoId` outline módulos/aulas + emitir certificado
-- `/aulas/:aulaId` player HTML5 + materiais + quiz + concluir
+- `/aulas/:aulaId` player HTML5 + sidebar de módulos/aulas + materiais + quiz + concluir
 - `/conjuntos` trilhas (não liberam acesso sozinhas)
 - `/financas` validade + WhatsApp upgrade/renovar
 - `/secretaria` tickets

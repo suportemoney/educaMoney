@@ -43,7 +43,7 @@ const NAV_GROUPS: NavGroup[] = [
         to: "/alunos",
         label: "Alunos",
         icon: "student",
-        papeis: ["administrador", "gestor"],
+        papeis: ["administrador", "gestor", "instrutor"],
       },
     ],
   },
@@ -55,7 +55,7 @@ const NAV_GROUPS: NavGroup[] = [
         to: "/cursos",
         label: "Cursos",
         icon: "course",
-        papeis: ["administrador", "gestor", "pr"],
+        papeis: ["administrador", "gestor", "pr", "instrutor"],
       },
       {
         to: "/categorias",

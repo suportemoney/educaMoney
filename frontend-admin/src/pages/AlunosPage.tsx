@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { apiFormData, apiRequest, abrirPdfAutenticado, type AlunoAdmin, type Plano } from "../api/client";
+import { apiFormData, apiRequest, abrirPdfAutenticado, downloadCsv, type AlunoAdmin, type Plano } from "../api/client";
 import { Modal } from "../components/Modal";
 import { useAuth } from "../context/AuthContext";
 import { previewValorUpgrade } from "./AtivacoesPage";
@@ -45,7 +45,8 @@ const FORM_VAZIO = {
 };
 
 export function AlunosPage() {
-  const { access } = useAuth();
+  const { access, user } = useAuth();
+  const soInstrutor = user?.papel === "instrutor" && !user?.is_superuser;
   const [itens, setItens] = useState<AlunoAdmin[]>([]);
   const [planos, setPlanos] = useState<Plano[]>([]);
   const [q, setQ] = useState("");
@@ -244,13 +245,35 @@ export function AlunosPage() {
     <div>
       <div className="page-head">
         <h1>Alunos</h1>
-        <button type="button" className="btn btn--primary btn--small" onClick={abrirNovo}>
-          Novo
-        </button>
+        {!soInstrutor && (
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost btn--small"
+              onClick={() => {
+                if (!access) return;
+                const params = new URLSearchParams();
+                if (q.trim()) params.set("q", q.trim());
+                const qs = params.toString();
+                downloadCsv(
+                  `/admin/export/alunos.csv${qs ? `?${qs}` : ""}`,
+                  access,
+                  "alunos.csv"
+                ).catch((e: Error) => setErro(e.message));
+              }}
+            >
+              Export CSV
+            </button>
+            <button type="button" className="btn btn--primary btn--small" onClick={abrirNovo}>
+              Novo
+            </button>
+          </>
+        )}
       </div>
       <p className="page-lead">
-        Criar e editar alunos, filtrar por status/plano/dados de certificado e ver
-        progresso, ativações e certificados.
+        {soInstrutor
+          ? "Alunos com acesso aos seus cursos e respectivo progresso."
+          : "Criar e editar alunos, filtrar por status/plano/dados de certificado e ver progresso, ativações e certificados."}
       </p>
       {erro && <p className="form-erro">{erro}</p>}
       <form
@@ -334,13 +357,15 @@ export function AlunosPage() {
                 </td>
                 <td>{a.is_active ? "Sim" : "Não"}</td>
                 <td className="td-actions">
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--small"
-                    onClick={() => abrirEditar(a)}
-                  >
-                    Editar
-                  </button>
+                  {!soInstrutor && (
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--small"
+                      onClick={() => abrirEditar(a)}
+                    >
+                      Editar
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="btn btn--ghost btn--small"
@@ -582,14 +607,16 @@ export function AlunosPage() {
                 </dd>
               </div>
             </dl>
-            <button
-              type="button"
-              className="btn btn--ghost btn--small"
-              onClick={toggleAtivo}
-              disabled={salvando}
-            >
-              {detalhe.is_active ? "Inativar" : "Reativar"}
-            </button>
+            {!soInstrutor && (
+              <button
+                type="button"
+                className="btn btn--ghost btn--small"
+                onClick={toggleAtivo}
+                disabled={salvando}
+              >
+                {detalhe.is_active ? "Inativar" : "Reativar"}
+              </button>
+            )}
 
             <h3>Ativações vigentes</h3>
             {(detalhe.ativacoes || []).length === 0 && <p>Nenhuma.</p>}

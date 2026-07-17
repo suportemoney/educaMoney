@@ -73,7 +73,39 @@ class MeView(APIView):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get(self, request):
-        return Response(UserSerializer(request.user, context={"request": request}).data)
+        data = UserSerializer(request.user, context={"request": request}).data
+        # Aviso de vencimento no portal (P18); e-mail fica no job avisar_vencimento
+        from accounts.models import Perfil
+        from accounts.permissions import obter_papel
+        from catalog.models import Ativacao
+
+        avisos: list[dict] = []
+        if obter_papel(request.user) == Perfil.Papel.ALUNO:
+            agora = timezone.now()
+            limite = agora + timedelta(days=7)
+            proximas = (
+                Ativacao.objects.filter(
+                    usuario=request.user,
+                    ativo=True,
+                    valido_ate__isnull=False,
+                    valido_ate__gte=agora,
+                    valido_ate__lte=limite,
+                )
+                .select_related("plano")
+                .order_by("valido_ate")[:5]
+            )
+            for ativ in proximas:
+                dias = max(0, (ativ.valido_ate - agora).days)
+                plano = ativ.plano.titulo if ativ.plano_id else "Plano"
+                avisos.append(
+                    {
+                        "tipo": "vencimento",
+                        "mensagem": f"{plano} vence em {dias} dia(s).",
+                        "dias": dias,
+                    }
+                )
+        data["avisos"] = avisos
+        return Response(data)
 
     def patch(self, request):
         from .dados_legais import aplicar_dados_legais
@@ -313,26 +345,57 @@ class AdminDashboardView(APIView):
         ).count()
 
         if papel == Perfil.Papel.INSTRUTOR:
+            from catalog.instrutor_scope import alunos_dos_cursos_instrutor
+            from catalog.models import ProgressoAula
+
             meus_cursos = Curso.objects.filter(instrutor=request.user, ativo=True)
-            minhas_aulas = Aula.objects.filter(modulo__curso__instrutor=request.user, ativo=True)
+            minhas_aulas = Aula.objects.filter(
+                modulo__curso__instrutor=request.user, ativo=True
+            )
             meus_materiais = MaterialAula.objects.filter(
                 aula__modulo__curso__instrutor=request.user, ativo=True
             )
-            meus_quizzes = Quiz.objects.filter(aula__modulo__curso__instrutor=request.user, ativo=True)
+            meus_quizzes = Quiz.objects.filter(
+                Q(aula__modulo__curso__instrutor=request.user)
+                | Q(modulo__curso__instrutor=request.user)
+                | Q(curso__instrutor=request.user),
+                ativo=True,
+            ).distinct()
+            alunos_qs = alunos_dos_cursos_instrutor(request.user)
+            alunos_ativos = alunos_qs.filter(is_active=True).count()
+            # Progresso médio aproximado: aulas concluídas / (alunos × aulas)
+            n_aulas = minhas_aulas.count()
+            n_alunos = alunos_ativos
+            media = 0
+            if n_aulas and n_alunos:
+                concluidas = ProgressoAula.objects.filter(
+                    aula__modulo__curso__instrutor=request.user,
+                    usuario_id__in=alunos_qs.values_list("id", flat=True),
+                    concluida=True,
+                ).count()
+                media = round(100 * concluidas / (n_aulas * n_alunos))
             base["metricas"] = [
-                metrica("Cursos lecionados", meus_cursos.count(), "Cursos ativos com você como instrutor"),
-                metrica("Aulas publicadas", minhas_aulas.count(), "Aulas ativas no catálogo"),
-                metrica("Materiais", meus_materiais.count(), "Arquivos de apoio publicados"),
-                metrica("Quizzes", meus_quizzes.count(), "Quizzes ativos nas suas aulas"),
+                metrica(
+                    "Cursos lecionados",
+                    meus_cursos.count(),
+                    "Cursos ativos com você como instrutor",
+                ),
+                metrica("Alunos ativos", alunos_ativos, "Com plano nos seus cursos"),
+                metrica("Progresso médio", f"{media}%", "Estimativa nos seus cursos"),
+                metrica("Aulas publicadas", n_aulas, "Aulas ativas no catálogo"),
             ]
             base["status_operacao"] = [
-                status_item("Cursos sem conteúdo", meus_cursos.exclude(modulos__aulas__ativo=True).distinct().count(), "warn"),
-                status_item("Aulas sem quiz", minhas_aulas.exclude(quiz__ativo=True).distinct().count(), "info"),
-                status_item("Aulas sem material", minhas_aulas.exclude(materiais__ativo=True).distinct().count(), "info"),
+                status_item(
+                    "Cursos sem conteúdo",
+                    meus_cursos.exclude(modulos__aulas__ativo=True).distinct().count(),
+                    "warn",
+                ),
+                status_item("Materiais", meus_materiais.count(), "info"),
+                status_item("Quizzes/atividades", meus_quizzes.count(), "info"),
             ]
             base["atalhos"] = [
-                atalho("Abrir cursos", "/cursos", "primary"),
-                atalho("Editar conteúdo", "/cursos", "default"),
+                atalho("Meus cursos", "/cursos", "primary"),
+                atalho("Alunos", "/alunos", "default"),
             ]
             if meus_cursos.count() == 0:
                 base["insights"].append("Você ainda não está vinculado a cursos ativos.")

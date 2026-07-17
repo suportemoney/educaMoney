@@ -348,4 +348,7 @@ class AdminTicketDetailView(APIView):
         ser = TicketSecretariaSerializer(ticket, data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         ser.save()
+        from accounts.email_notify import notificar_ticket_atualizado
+
+        notificar_ticket_atualizado(ticket)
         return Response(ser.data)

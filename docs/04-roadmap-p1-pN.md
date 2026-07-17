@@ -89,6 +89,35 @@
 - Soft-delete helpers, health com check de DB, script `scripts/backup-postgres.sh`
 - Soft-delete preferencial já aplicado em categorias/conjuntos/materiais/quizzes
 
+## P17 — Hardening (entregue)
+
+- Nginx: `/media/documentos_aluno/` inacessível (PDF só via API autenticada)
+- UI painel: criação de “bloqueia avanço” (legado) removida do editor de atividades
+
+## P18 — Notificações por e-mail (entregue)
+
+- SMTP via `.env` + `EMAIL_ENABLED`; eventos: ticket (aluno/staff), certificado, aviso de vencimento (`avisar_vencimento`)
+
+## P19 — Área do Instrutor (entregue)
+
+- Nav/APIs filtradas por `Curso.instrutor`; dashboard com métricas dos próprios cursos
+
+## P20 — Relatórios CSV (entregue)
+
+- Export alunos, ativações e progresso por curso (admin/gestor)
+
+## P21 — Portal: conjuntos + UX (entregue)
+
+- Progresso agregado do conjunto; checklist; banner perfil incompleto; atividades no player
+
+## P22 — Landing (entregue)
+
+- Validar certificado; Termos e Privacidade; SEO básico
+
+## P23 — Qualidade (entregue)
+
+- Smoke tests; health ampliado (media/ffmpeg); doc de deploy curto (sem backup automático)
+
 ## P10 — (legado) Operação
 
 - Itens absorvidos em P16; backups e observabilidade contínua

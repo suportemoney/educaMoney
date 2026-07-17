@@ -35,6 +35,11 @@ from .aluno_views import (
     QuizAlunoView,
     TicketsAlunoView,
 )
+from .export_views import (
+    ExportAlunosCsvView,
+    ExportAtivacoesCsvView,
+    ExportProgressoCsvView,
+)
 from .lms_admin_views import (
     AdminAlternativaDetailView,
     AdminAlternativaListCreateView,
@@ -245,6 +250,21 @@ admin_urlpatterns = [
         name="admin-conjunto-detail",
     ),
     path("ativacoes/", AdminAtivacaoListView.as_view(), name="admin-ativacoes"),
+    path(
+        "export/alunos.csv",
+        ExportAlunosCsvView.as_view(),
+        name="admin-export-alunos",
+    ),
+    path(
+        "export/ativacoes.csv",
+        ExportAtivacoesCsvView.as_view(),
+        name="admin-export-ativacoes",
+    ),
+    path(
+        "export/progresso.csv",
+        ExportProgressoCsvView.as_view(),
+        name="admin-export-progresso",
+    ),
     path(
         "ativacoes/<int:pk>/estender/",
         AdminAtivacaoEstenderView.as_view(),

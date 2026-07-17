@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { apiRequest, type AtivacaoAdmin, type Plano } from "../api/client";
+import { apiRequest, downloadCsv, type AtivacaoAdmin, type Plano } from "../api/client";
 import { Modal } from "../components/Modal";
 import { useAuth } from "../context/AuthContext";
 
@@ -179,6 +179,25 @@ export function AtivacoesPage() {
     <div>
       <div className="page-head">
         <h1>Ativações</h1>
+        <button
+          type="button"
+          className="btn btn--ghost btn--small"
+          onClick={() => {
+            if (!access) return;
+            const params = new URLSearchParams();
+            if (q.trim()) params.set("q", q.trim());
+            if (filtroVigente) params.set("vigente", filtroVigente);
+            if (filtroPlano) params.set("plano_id", filtroPlano);
+            const qs = params.toString();
+            downloadCsv(
+              `/admin/export/ativacoes.csv${qs ? `?${qs}` : ""}`,
+              access,
+              "ativacoes.csv"
+            ).catch((e: Error) => setErro(e.message));
+          }}
+        >
+          Export CSV
+        </button>
       </div>
       <p className="page-lead">
         Estenda a validade ou faça upgrade de plano (mesmo vencimento, valor diferencial

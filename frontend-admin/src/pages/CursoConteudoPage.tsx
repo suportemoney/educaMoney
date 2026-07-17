@@ -464,19 +464,21 @@ export function CursoConteudoPage() {
     if (!access || !cursoId) return;
     setSalvando(true);
     setErro(null);
+    // bloqueia_proxima é fluxo legado — novas edições sempre desligam
+    const payload = { ...formQuiz, bloqueia_proxima: false };
     try {
       if (quizEditorAlvo === "prova") {
         if (quizValido(prova)) {
           await apiRequest(`/admin/quizzes/${prova.id}/`, {
             method: "PATCH",
             token: access,
-            body: formQuiz,
+            body: payload,
           });
         } else {
           await apiRequest(`/admin/cursos/${cursoId}/prova/`, {
             method: "POST",
             token: access,
-            body: formQuiz,
+            body: payload,
           });
         }
         setModalQuiz(false);
@@ -491,13 +493,13 @@ export function CursoConteudoPage() {
           await apiRequest(`/admin/quizzes/${editQuizId}/`, {
             method: "PATCH",
             token: access,
-            body: formQuiz,
+            body: payload,
           });
         } else {
           await apiRequest(`/admin/modulos/${moduloSel}/atividades/`, {
             method: "POST",
             token: access,
-            body: formQuiz,
+            body: payload,
           });
         }
         setModalQuiz(false);
@@ -1308,18 +1310,6 @@ export function CursoConteudoPage() {
               }
             />
           </label>
-          {quizEditorAlvo === "atividade" && (
-            <label className="check-row">
-              <input
-                type="checkbox"
-                checked={formQuiz.bloqueia_proxima}
-                onChange={(e) =>
-                  setFormQuiz({ ...formQuiz, bloqueia_proxima: e.target.checked })
-                }
-              />
-              Bloqueia avanço (legado)
-            </label>
-          )}
           <label className="check-row">
             <input
               type="checkbox"

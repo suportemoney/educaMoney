@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import {
   apiFormData,
   apiRequest,
+  downloadCsv,
   type Curso,
   type Plano,
   type Subcategoria,
@@ -31,7 +32,8 @@ function truncarPlanos(nomes: string[] | undefined, ids: number[]): string {
 }
 
 export function CursosPage() {
-  const { access } = useAuth();
+  const { access, user } = useAuth();
+  const soInstrutor = user?.papel === "instrutor" && !user?.is_superuser;
   const [itens, setItens] = useState<Curso[]>([]);
   const [planos, setPlanos] = useState<Plano[]>([]);
   const [instrutores, setInstrutores] = useState<User[]>([]);
@@ -157,12 +159,16 @@ export function CursosPage() {
     <div>
       <div className="page-head">
         <h1>Cursos</h1>
-        <button type="button" className="btn btn--primary btn--small" onClick={abrirNovo}>
-          Novo
-        </button>
+        {!soInstrutor && (
+          <button type="button" className="btn btn--primary btn--small" onClick={abrirNovo}>
+            Novo
+          </button>
+        )}
       </div>
       <p className="page-lead">
-        Associe planos e instrutor. Use Conteúdo para módulos, aulas, materiais e quizzes.
+        {soInstrutor
+          ? "Seus cursos. Use Conteúdo para módulos, aulas, materiais e atividades."
+          : "Associe planos e instrutor. Use Conteúdo para módulos, aulas, materiais e quizzes."}
       </p>
       <div className="stat-chips">
         <span className="stat-chip">
@@ -265,21 +271,41 @@ export function CursosPage() {
                   >
                     Conteúdo
                   </Link>
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--small"
-                    onClick={() => abrirEditar(c)}
-                  >
-                    Editar
-                  </button>
-                  {c.ativo && (
+                  {!soInstrutor && (
                     <button
                       type="button"
                       className="btn btn--ghost btn--small"
-                      onClick={() => excluir(c)}
+                      onClick={() => {
+                        if (!access) return;
+                        downloadCsv(
+                          `/admin/export/progresso.csv?curso_id=${c.id}`,
+                          access,
+                          `progresso_curso_${c.id}.csv`
+                        ).catch((e: Error) => setErro(e.message));
+                      }}
                     >
-                      Excluir
+                      CSV progresso
                     </button>
+                  )}
+                  {!soInstrutor && (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--small"
+                        onClick={() => abrirEditar(c)}
+                      >
+                        Editar
+                      </button>
+                      {c.ativo && (
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--small"
+                          onClick={() => excluir(c)}
+                        >
+                          Excluir
+                        </button>
+                      )}
+                    </>
                   )}
                 </td>
               </tr>
@@ -287,10 +313,19 @@ export function CursosPage() {
             {itens.length === 0 && (
               <tr>
                 <td colSpan={8}>
-                  Nenhum curso encontrado.{" "}
-                  <button type="button" className="btn btn--ghost btn--small" onClick={abrirNovo}>
-                    Novo curso
-                  </button>
+                  Nenhum curso encontrado.
+                  {!soInstrutor && (
+                    <>
+                      {" "}
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--small"
+                        onClick={abrirNovo}
+                      >
+                        Novo curso
+                      </button>
+                    </>
+                  )}
                 </td>
               </tr>
             )}

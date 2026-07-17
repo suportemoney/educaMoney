@@ -564,6 +564,9 @@ class TicketsAlunoView(APIView):
             assunto=ser.validated_data["assunto"],
             mensagem=ser.validated_data["mensagem"],
         )
+        from accounts.email_notify import notificar_ticket_aberto
+
+        notificar_ticket_aberto(ticket)
         return Response(
             TicketSecretariaSerializer(ticket).data, status=status.HTTP_201_CREATED
         )

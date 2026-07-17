@@ -807,6 +807,9 @@ class ConjuntoAlunoSerializer(serializers.ModelSerializer):
     categoria_titulo = serializers.CharField(source="categoria.titulo", read_only=True)
     icone_url = serializers.SerializerMethodField()
     cursos = serializers.SerializerMethodField()
+    progresso_pct = serializers.SerializerMethodField()
+    cursos_concluidos = serializers.SerializerMethodField()
+    cursos_total = serializers.SerializerMethodField()
 
     class Meta:
         model = Conjunto
@@ -820,14 +823,28 @@ class ConjuntoAlunoSerializer(serializers.ModelSerializer):
             "icone_key",
             "ordem",
             "cursos",
+            "progresso_pct",
+            "cursos_concluidos",
+            "cursos_total",
         )
 
     def get_icone_url(self, obj):
         return _file_url(obj.icone, self.context.get("request"))
 
-    def get_cursos(self, obj):
+    def _cache_cursos(self, obj):
+        """Monta cursos + progresso uma vez por conjunto (evita N chamadas)."""
+        cache = getattr(self, "_conjuntos_cache", None)
+        if cache is None:
+            self._conjuntos_cache = {}
+            cache = self._conjuntos_cache
+        if obj.pk in cache:
+            return cache[obj.pk]
+
+        from .models import Aula, ProgressoAula
+
         liberados = self.context.get("liberados_ids") or set()
         request = self.context.get("request")
+        user = getattr(request, "user", None) if request else None
         out = []
         for cc in obj.conjunto_cursos.select_related(
             "curso", "curso__subcategoria", "curso__subcategoria__categoria"
@@ -835,17 +852,65 @@ class ConjuntoAlunoSerializer(serializers.ModelSerializer):
             c = cc.curso
             if not c.ativo:
                 continue
-            out.append(
-                {
-                    "id": c.id,
-                    "titulo": c.titulo,
-                    "icone_url": _file_url(c.icone, request),
-                    "icone_key": c.icone_key,
-                    "capa_url": _file_url(c.capa, request),
-                    "liberado": c.id in liberados,
-                }
-            )
+            row = {
+                "id": c.id,
+                "titulo": c.titulo,
+                "icone_url": _file_url(c.icone, request),
+                "icone_key": c.icone_key,
+                "capa_url": _file_url(c.capa, request),
+                "liberado": c.id in liberados,
+                "progresso_pct": 0,
+                "continuar_aula_id": None,
+            }
+            if user and user.is_authenticated and c.id in liberados:
+                aulas = list(
+                    Aula.objects.filter(
+                        modulo__curso=c, modulo__ativo=True, ativo=True
+                    ).order_by("modulo__ordem", "modulo__id", "ordem", "id")
+                )
+                total = len(aulas)
+                if total:
+                    prog = {
+                        p.aula_id: p
+                        for p in ProgressoAula.objects.filter(
+                            usuario=user, aula__in=aulas
+                        )
+                    }
+                    concluidas = sum(
+                        1
+                        for a in aulas
+                        if prog.get(a.id) and prog[a.id].concluida
+                    )
+                    row["progresso_pct"] = int(round(100 * concluidas / total))
+                    for a in aulas:
+                        p = prog.get(a.id)
+                        if not p or not p.concluida:
+                            row["continuar_aula_id"] = a.id
+                            break
+            out.append(row)
+        cache[obj.pk] = out
         return out
+
+    def get_cursos(self, obj):
+        return self._cache_cursos(obj)
+
+    def get_cursos_total(self, obj):
+        return len(self._cache_cursos(obj))
+
+    def get_cursos_concluidos(self, obj):
+        return sum(
+            1
+            for c in self._cache_cursos(obj)
+            if c.get("liberado") and (c.get("progresso_pct") or 0) >= 100
+        )
+
+    def get_progresso_pct(self, obj):
+        cursos = [c for c in self._cache_cursos(obj) if c.get("liberado")]
+        if not cursos:
+            return 0
+        return int(
+            round(sum(c.get("progresso_pct") or 0 for c in cursos) / len(cursos))
+        )
 
 
 class MaterialAulaSerializer(serializers.ModelSerializer):

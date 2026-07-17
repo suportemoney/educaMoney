@@ -147,11 +147,18 @@ def emitir_certificado(usuario: User, curso: Curso) -> Certificado:
         antigo.html = html
         antigo.emitido_em = agora
         antigo.save(update_fields=["revogado", "html", "emitido_em"])
+        from accounts.email_notify import notificar_certificado_emitido
+
+        notificar_certificado_emitido(antigo)
         return antigo
 
-    return Certificado.objects.create(
+    cert = Certificado.objects.create(
         usuario=usuario,
         curso=curso,
         codigo=codigo,
         html=html,
     )
+    from accounts.email_notify import notificar_certificado_emitido
+
+    notificar_certificado_emitido(cert)
+    return cert

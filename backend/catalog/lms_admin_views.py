@@ -12,7 +12,18 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 
 from accounts.models import Perfil
-from accounts.permissions import IsAdminOrGestor, IsPROrAbove
+from accounts.permissions import (
+    IsAdminGestorOrInstrutor,
+    IsAdminOrGestor,
+    IsInstrutorOrPROrAbove,
+    IsPROrAbove,
+)
+from .instrutor_scope import (
+    alunos_dos_cursos_instrutor,
+    eh_instrutor,
+    ids_cursos_instrutor,
+    instrutor_pode_curso,
+)
 from accounts.ra import garantir_ra
 
 from .access import ativacoes_vigentes_qs, cursos_liberados_aluno
@@ -56,7 +67,7 @@ def _stats_progresso(user, curso):
 
 
 class AdminMaterialListCreateView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+    permission_classes = [permissions.IsAuthenticated, IsInstrutorOrPROrAbove]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get(self, request, aula_id):
@@ -89,7 +100,7 @@ class AdminMaterialListCreateView(APIView):
 
 
 class AdminMaterialDetailView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+    permission_classes = [permissions.IsAuthenticated, IsInstrutorOrPROrAbove]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def patch(self, request, pk):
@@ -110,7 +121,7 @@ class AdminMaterialDetailView(APIView):
 class AdminModuloMateriaisView(APIView):
     """Materiais do módulo (cascata)."""
 
-    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+    permission_classes = [permissions.IsAuthenticated, IsInstrutorOrPROrAbove]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get(self, request, modulo_id):
@@ -145,7 +156,7 @@ class AdminModuloMateriaisView(APIView):
 class AdminModuloAtividadesView(APIView):
     """Atividades (quizzes) do módulo."""
 
-    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+    permission_classes = [permissions.IsAuthenticated, IsInstrutorOrPROrAbove]
 
     def get(self, request, modulo_id):
         modulo = get_object_or_404(Modulo, pk=modulo_id)
@@ -177,7 +188,7 @@ class AdminModuloAtividadesView(APIView):
 class AdminCursoProvaView(APIView):
     """Prova avaliadora única do curso (certificado)."""
 
-    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+    permission_classes = [permissions.IsAuthenticated, IsInstrutorOrPROrAbove]
 
     def get(self, request, curso_id):
         curso = get_object_or_404(Curso, pk=curso_id)
@@ -370,14 +381,17 @@ def _serializar_aluno_detalhe(request, u):
 
 
 class AdminAlunoListView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsAdminOrGestor]
+    permission_classes = [permissions.IsAuthenticated, IsAdminGestorOrInstrutor]
 
     def get(self, request):
         from accounts.cpf import limpar_cpf
 
-        qs = User.objects.filter(perfil__papel=Perfil.Papel.ALUNO).select_related(
-            "perfil"
-        )
+        if eh_instrutor(request.user):
+            qs = alunos_dos_cursos_instrutor(request.user)
+        else:
+            qs = User.objects.filter(perfil__papel=Perfil.Papel.ALUNO).select_related(
+                "perfil"
+            )
         busca = (request.query_params.get("q") or "").strip()
         if busca:
             filtro_texto = (
@@ -412,14 +426,24 @@ class AdminAlunoListView(APIView):
             qs = qs.filter(_qs_dados_certificado_incompletos())
 
         out = []
+        curso_ids = ids_cursos_instrutor(request.user) if eh_instrutor(request.user) else None
         for u in qs.order_by("first_name", "username")[:200]:
             item = _serializar_aluno_lista(request, u)
+            if curso_ids is not None:
+                item["progresso"] = [
+                    p for p in (item.get("progresso") or []) if p.get("curso_id") in curso_ids
+                ]
             if request.query_params.get("com_plano") == "1" and not item["ativacoes_vigentes"]:
                 continue
             out.append(item)
         return Response(out)
 
     def post(self, request):
+        if eh_instrutor(request.user):
+            return Response(
+                {"detail": "Instrutor não pode criar alunos."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         username = (request.data.get("username") or "").strip()
         email = (request.data.get("email") or "").strip().lower()
         first_name = (request.data.get("first_name") or "").strip()
@@ -463,7 +487,7 @@ class AdminAlunoListView(APIView):
 
 
 class AdminAlunoDetailView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsAdminOrGestor]
+    permission_classes = [permissions.IsAuthenticated, IsAdminGestorOrInstrutor]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get(self, request, pk):
@@ -472,9 +496,23 @@ class AdminAlunoDetailView(APIView):
             pk=pk,
             perfil__papel=Perfil.Papel.ALUNO,
         )
+        if eh_instrutor(request.user):
+            if not alunos_dos_cursos_instrutor(request.user).filter(pk=u.pk).exists():
+                return Response({"detail": "Sem acesso."}, status=status.HTTP_403_FORBIDDEN)
+            data = _serializar_aluno_detalhe(request, u)
+            ids = ids_cursos_instrutor(request.user)
+            data["progresso"] = [
+                p for p in (data.get("progresso") or []) if p.get("curso_id") in ids
+            ]
+            return Response(data)
         return Response(_serializar_aluno_detalhe(request, u))
 
     def patch(self, request, pk):
+        if eh_instrutor(request.user):
+            return Response(
+                {"detail": "Instrutor não edita cadastro de alunos."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         from accounts.dados_legais import aplicar_dados_legais
 
         u = get_object_or_404(
@@ -572,7 +610,7 @@ class AdminAlunoDocumentoView(APIView):
 
 
 class AdminQuizByAulaView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+    permission_classes = [permissions.IsAuthenticated, IsInstrutorOrPROrAbove]
 
     def get(self, request, aula_id):
         aula = get_object_or_404(Aula, pk=aula_id)
@@ -614,7 +652,7 @@ class AdminQuizByAulaView(APIView):
 
 
 class AdminQuizDetailView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+    permission_classes = [permissions.IsAuthenticated, IsInstrutorOrPROrAbove]
 
     def patch(self, request, pk):
         quiz = get_object_or_404(Quiz, pk=pk)
@@ -634,7 +672,7 @@ class AdminQuizDetailView(APIView):
 
 
 class AdminPerguntaListCreateView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+    permission_classes = [permissions.IsAuthenticated, IsInstrutorOrPROrAbove]
 
     def get(self, request, quiz_id):
         quiz = get_object_or_404(Quiz, pk=quiz_id)
@@ -652,7 +690,7 @@ class AdminPerguntaListCreateView(APIView):
 
 
 class AdminPerguntaDetailView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+    permission_classes = [permissions.IsAuthenticated, IsInstrutorOrPROrAbove]
 
     def patch(self, request, pk):
         pergunta = get_object_or_404(Pergunta, pk=pk)
@@ -668,7 +706,7 @@ class AdminPerguntaDetailView(APIView):
 
 
 class AdminAlternativaListCreateView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+    permission_classes = [permissions.IsAuthenticated, IsInstrutorOrPROrAbove]
 
     def post(self, request, pergunta_id):
         pergunta = get_object_or_404(Pergunta, pk=pergunta_id)
@@ -681,7 +719,7 @@ class AdminAlternativaListCreateView(APIView):
 
 
 class AdminAlternativaDetailView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+    permission_classes = [permissions.IsAuthenticated, IsInstrutorOrPROrAbove]
 
     def patch(self, request, pk):
         alt = get_object_or_404(Alternativa, pk=pk)

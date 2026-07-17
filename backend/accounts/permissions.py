@@ -65,6 +65,31 @@ class IsInstrutor(BasePermission):
         return papel_em(request.user, Perfil.Papel.INSTRUTOR)
 
 
+class IsInstrutorOrPROrAbove(BasePermission):
+    """PR+ ou instrutor (cursos/conteúdo do próprio instrutor)."""
+
+    def has_permission(self, request, view):
+        return papel_em(
+            request.user,
+            Perfil.Papel.ADMINISTRADOR,
+            Perfil.Papel.GESTOR,
+            Perfil.Papel.PR,
+            Perfil.Papel.INSTRUTOR,
+        )
+
+
+class IsAdminGestorOrInstrutor(BasePermission):
+    """Gestão de alunos: admin/gestor ou instrutor (somente leitura filtrada)."""
+
+    def has_permission(self, request, view):
+        return papel_em(
+            request.user,
+            Perfil.Papel.ADMINISTRADOR,
+            Perfil.Papel.GESTOR,
+            Perfil.Papel.INSTRUTOR,
+        )
+
+
 class IsAluno(BasePermission):
     """Somente aluno (não staff do painel / superuser)."""
 

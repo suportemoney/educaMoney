@@ -340,6 +340,28 @@ export async function apiRequest<T>(path: string, options: Opts = {}): Promise<T
   return data as T;
 }
 
+/** Download de CSV (ou outro blob) autenticado. */
+export async function downloadCsv(
+  path: string,
+  token: string,
+  filename: string
+): Promise<void> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const data = parseJsonBody(await res.text());
+    throw new ApiError(res.status, data ?? {});
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 /** Upload multipart (vídeo de aula) — não força Content-Type JSON. */
 export async function apiFormData<T>(
   path: string,

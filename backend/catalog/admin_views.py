@@ -10,14 +10,23 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import Perfil
+from accounts.models import Perfil
 from accounts.permissions import (
     IsAdminOrGestor,
+    IsInstrutorOrPROrAbove,
     IsMerchantOrAbove,
     IsPROrAbove,
     IsPainelUser,
 )
 
+from .instrutor_scope import eh_instrutor, filtrar_cursos_qs, instrutor_pode_curso
 from .models import Aula, Curso, Integracao, Modulo, Plano, TokenKey
+
+
+def _curso_ou_403(request, curso: Curso):
+    if not instrutor_pode_curso(request.user, curso):
+        return Response({"detail": "Sem acesso a este curso."}, status=status.HTTP_403_FORBIDDEN)
+    return None
 from .serializers import (
     AulaAdminSerializer,
     CursoAdminSerializer,
@@ -80,7 +89,7 @@ class AdminPlanoDetailView(generics.RetrieveUpdateAPIView):
 
 class AdminCursoListCreateView(generics.ListCreateAPIView):
     serializer_class = CursoAdminSerializer
-    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+    permission_classes = [permissions.IsAuthenticated, IsInstrutorOrPROrAbove]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
@@ -96,6 +105,7 @@ class AdminCursoListCreateView(generics.ListCreateAPIView):
             )
             .order_by("ordem", "id")
         )
+        qs = filtrar_cursos_qs(qs, self.request.user)
         busca = (self.request.query_params.get("q") or "").strip()
         if busca:
             qs = qs.filter(
@@ -111,14 +121,25 @@ class AdminCursoListCreateView(generics.ListCreateAPIView):
             qs = qs.filter(subcategoria_id=int(sub))
         return qs
 
+    def create(self, request, *args, **kwargs):
+        if eh_instrutor(request.user):
+            return Response(
+                {"detail": "Instrutor não pode criar cursos."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().create(request, *args, **kwargs)
+
 
 class AdminCursoDetailView(generics.RetrieveUpdateAPIView):
     serializer_class = CursoAdminSerializer
-    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+    permission_classes = [permissions.IsAuthenticated, IsInstrutorOrPROrAbove]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
-    queryset = Curso.objects.select_related(
-        "instrutor", "subcategoria", "subcategoria__categoria"
-    ).prefetch_related("planos")
+
+    def get_queryset(self):
+        qs = Curso.objects.select_related(
+            "instrutor", "subcategoria", "subcategoria__categoria"
+        ).prefetch_related("planos")
+        return filtrar_cursos_qs(qs, self.request.user)
 
 
 class AdminIntegracaoListCreateView(generics.ListCreateAPIView):
@@ -186,10 +207,13 @@ class AdminInstrutorListView(APIView):
 
 
 class AdminModuloListCreateView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+    permission_classes = [permissions.IsAuthenticated, IsInstrutorOrPROrAbove]
 
     def get(self, request, curso_id):
         curso = get_object_or_404(Curso, pk=curso_id)
+        negado = _curso_ou_403(request, curso)
+        if negado:
+            return negado
         qs = Modulo.objects.filter(curso=curso).order_by("ordem", "id")
         if request.query_params.get("incluir_inativos") != "1":
             qs = qs.filter(ativo=True)
@@ -197,6 +221,9 @@ class AdminModuloListCreateView(APIView):
 
     def post(self, request, curso_id):
         curso = get_object_or_404(Curso, pk=curso_id)
+        negado = _curso_ou_403(request, curso)
+        if negado:
+            return negado
         ser = ModuloAdminSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         data = dict(ser.validated_data)
@@ -208,17 +235,23 @@ class AdminModuloListCreateView(APIView):
 
 
 class AdminModuloDetailView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+    permission_classes = [permissions.IsAuthenticated, IsInstrutorOrPROrAbove]
 
     def patch(self, request, pk):
-        modulo = get_object_or_404(Modulo, pk=pk)
+        modulo = get_object_or_404(Modulo.objects.select_related("curso"), pk=pk)
+        negado = _curso_ou_403(request, modulo.curso)
+        if negado:
+            return negado
         ser = ModuloAdminSerializer(modulo, data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         ser.save()
         return Response(ser.data)
 
     def delete(self, request, pk):
-        modulo = get_object_or_404(Modulo, pk=pk)
+        modulo = get_object_or_404(Modulo.objects.select_related("curso"), pk=pk)
+        negado = _curso_ou_403(request, modulo.curso)
+        if negado:
+            return negado
         soft_delete_ativo(modulo)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -226,20 +259,26 @@ class AdminModuloDetailView(APIView):
 class AdminCursoModulosReordenarView(APIView):
     """Kanban: reordena módulos do curso. Body: {\"ids\": [3,1,2]}."""
 
-    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+    permission_classes = [permissions.IsAuthenticated, IsInstrutorOrPROrAbove]
 
     def post(self, request, curso_id):
         curso = get_object_or_404(Curso, pk=curso_id)
+        negado = _curso_ou_403(request, curso)
+        if negado:
+            return negado
         qs = Modulo.objects.filter(curso=curso, ativo=True)
         return _reordenar(qs, request.data.get("ids"))
 
 
 class AdminAulaListCreateView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+    permission_classes = [permissions.IsAuthenticated, IsInstrutorOrPROrAbove]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get(self, request, modulo_id):
-        modulo = get_object_or_404(Modulo, pk=modulo_id)
+        modulo = get_object_or_404(Modulo.objects.select_related("curso"), pk=modulo_id)
+        negado = _curso_ou_403(request, modulo.curso)
+        if negado:
+            return negado
         qs = Aula.objects.filter(modulo=modulo).order_by("ordem", "id")
         if request.query_params.get("incluir_inativos") != "1":
             qs = qs.filter(ativo=True)
@@ -248,7 +287,10 @@ class AdminAulaListCreateView(APIView):
         )
 
     def post(self, request, modulo_id):
-        modulo = get_object_or_404(Modulo, pk=modulo_id)
+        modulo = get_object_or_404(Modulo.objects.select_related("curso"), pk=modulo_id)
+        negado = _curso_ou_403(request, modulo.curso)
+        if negado:
+            return negado
         ser = AulaAdminSerializer(data=request.data, context={"request": request})
         ser.is_valid(raise_exception=True)
         data = dict(ser.validated_data)
@@ -264,11 +306,16 @@ class AdminAulaListCreateView(APIView):
 
 
 class AdminAulaDetailView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+    permission_classes = [permissions.IsAuthenticated, IsInstrutorOrPROrAbove]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def patch(self, request, pk):
-        aula = get_object_or_404(Aula, pk=pk)
+        aula = get_object_or_404(
+            Aula.objects.select_related("modulo__curso"), pk=pk
+        )
+        negado = _curso_ou_403(request, aula.modulo.curso)
+        if negado:
+            return negado
         tinha_video = bool(aula.video)
         nome_antes = aula.video.name if aula.video else None
         ser = AulaAdminSerializer(
@@ -288,7 +335,12 @@ class AdminAulaDetailView(APIView):
         )
 
     def delete(self, request, pk):
-        aula = get_object_or_404(Aula, pk=pk)
+        aula = get_object_or_404(
+            Aula.objects.select_related("modulo__curso"), pk=pk
+        )
+        negado = _curso_ou_403(request, aula.modulo.curso)
+        if negado:
+            return negado
         soft_delete_ativo(aula)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -296,10 +348,13 @@ class AdminAulaDetailView(APIView):
 class AdminModuloAulasReordenarView(APIView):
     """Kanban: reordena aulas do módulo. Body: {\"ids\": [3,1,2]}."""
 
-    permission_classes = [permissions.IsAuthenticated, IsPROrAbove]
+    permission_classes = [permissions.IsAuthenticated, IsInstrutorOrPROrAbove]
 
     def post(self, request, modulo_id):
-        modulo = get_object_or_404(Modulo, pk=modulo_id)
+        modulo = get_object_or_404(Modulo.objects.select_related("curso"), pk=modulo_id)
+        negado = _curso_ou_403(request, modulo.curso)
+        if negado:
+            return negado
         qs = Aula.objects.filter(modulo=modulo, ativo=True)
         return _reordenar(qs, request.data.get("ids"))
 

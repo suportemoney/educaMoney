@@ -826,6 +826,28 @@ a {
   align-items: flex-start;
 }
 
+.perfil-dl {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.perfil-dl > div {
+  display: grid;
+  grid-template-columns: 7rem 1fr;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.perfil-dl dt {
+  margin: 0;
+  color: var(--em-muted);
+  font-weight: 600;
+}
+
+.perfil-dl dd {
+  margin: 0;
+}
+
 .aluno-ativacao-card {
   margin-bottom: 0.75rem;
   padding: 0.65rem 0.75rem;

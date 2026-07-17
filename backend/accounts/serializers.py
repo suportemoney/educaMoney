@@ -52,6 +52,12 @@ class UserSerializer(serializers.ModelSerializer):
     foto_url = serializers.SerializerMethodField()
     bio = serializers.SerializerMethodField()
     ra = serializers.SerializerMethodField()
+    cpf = serializers.SerializerMethodField()
+    cpf_formatado = serializers.SerializerMethodField()
+    data_nascimento = serializers.SerializerMethodField()
+    documento_tipo = serializers.SerializerMethodField()
+    documento_url = serializers.SerializerMethodField()
+    dados_certificado_completos = serializers.SerializerMethodField()
     is_superuser = serializers.BooleanField(read_only=True)
     is_active = serializers.BooleanField(read_only=True)
 
@@ -66,6 +72,12 @@ class UserSerializer(serializers.ModelSerializer):
             "foto_url",
             "bio",
             "ra",
+            "cpf",
+            "cpf_formatado",
+            "data_nascimento",
+            "documento_tipo",
+            "documento_url",
+            "dados_certificado_completos",
             "is_superuser",
             "is_active",
         )
@@ -96,6 +108,39 @@ class UserSerializer(serializers.ModelSerializer):
 
             return garantir_ra(perfil)
         return perfil.ra
+
+    def get_cpf(self, obj):
+        perfil = getattr(obj, "perfil", None)
+        return (perfil.cpf if perfil else "") or ""
+
+    def get_cpf_formatado(self, obj):
+        from .cpf import formatar_cpf
+
+        return formatar_cpf(self.get_cpf(obj)) if self.get_cpf(obj) else ""
+
+    def get_data_nascimento(self, obj):
+        perfil = getattr(obj, "perfil", None)
+        if not perfil or not perfil.data_nascimento:
+            return None
+        return perfil.data_nascimento.isoformat()
+
+    def get_documento_tipo(self, obj):
+        perfil = getattr(obj, "perfil", None)
+        return (perfil.documento_tipo if perfil else "") or ""
+
+    def get_documento_url(self, obj):
+        perfil = getattr(obj, "perfil", None)
+        if not perfil or not perfil.documento_arquivo:
+            return None
+        request = self.context.get("request")
+        url = perfil.documento_arquivo.url
+        if request:
+            return request.build_absolute_uri(url)
+        return url
+
+    def get_dados_certificado_completos(self, obj):
+        perfil = getattr(obj, "perfil", None)
+        return bool(perfil and perfil.dados_certificado_completos())
 
 
 class AdminUserCreateSerializer(serializers.Serializer):

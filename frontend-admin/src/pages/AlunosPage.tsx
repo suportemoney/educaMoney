@@ -400,6 +400,45 @@ export function AlunosPage() {
                 ) : null}
               </p>
             </div>
+            <h3>Dados para certificado</h3>
+            <dl className="perfil-dl" style={{ margin: 0 }}>
+              <div>
+                <dt>CPF</dt>
+                <dd>{detalhe.cpf_formatado || detalhe.cpf || "—"}</dd>
+              </div>
+              <div>
+                <dt>Nascimento</dt>
+                <dd>
+                  {detalhe.data_nascimento
+                    ? new Date(detalhe.data_nascimento + "T12:00:00").toLocaleDateString(
+                        "pt-BR"
+                      )
+                    : "—"}
+                </dd>
+              </div>
+              <div>
+                <dt>Documento</dt>
+                <dd>
+                  {detalhe.documento_tipo_label || detalhe.documento_tipo || "—"}
+                  {detalhe.documento_url ? (
+                    <>
+                      {" · "}
+                      <a href={detalhe.documento_url} target="_blank" rel="noreferrer">
+                        ver PDF
+                      </a>
+                    </>
+                  ) : null}
+                </dd>
+              </div>
+              <div>
+                <dt>Status</dt>
+                <dd>
+                  {detalhe.dados_certificado_completos
+                    ? "Completo"
+                    : "Incompleto (aluno deve preencher no portal)"}
+                </dd>
+              </div>
+            </dl>
             <button
               type="button"
               className="btn btn--ghost btn--small"

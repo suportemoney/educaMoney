@@ -98,6 +98,13 @@ export type AlunoAdmin = {
   ra: string | null;
   foto_url?: string | null;
   bio?: string;
+  cpf?: string;
+  cpf_formatado?: string;
+  data_nascimento?: string | null;
+  documento_tipo?: string;
+  documento_tipo_label?: string;
+  documento_url?: string | null;
+  dados_certificado_completos?: boolean;
   ativacoes_vigentes: number;
   planos: string[];
   progresso: {

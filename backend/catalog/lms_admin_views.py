@@ -244,23 +244,59 @@ def _bool_param(raw, default=None):
     return str(raw).lower() in ("1", "true", "yes", "on")
 
 
+def _dados_legais_perfil(request, perfil):
+    from accounts.cpf import formatar_cpf
+    from accounts.models import Perfil
+
+    if not perfil:
+        return {
+            "cpf": "",
+            "cpf_formatado": "",
+            "data_nascimento": None,
+            "documento_tipo": "",
+            "documento_tipo_label": "",
+            "documento_url": None,
+            "dados_certificado_completos": False,
+        }
+    doc_url = None
+    if perfil.documento_arquivo:
+        url = perfil.documento_arquivo.url
+        doc_url = request.build_absolute_uri(url) if request else url
+    tipo = perfil.documento_tipo or ""
+    labels = dict(Perfil.DocumentoTipo.choices)
+    return {
+        "cpf": perfil.cpf or "",
+        "cpf_formatado": formatar_cpf(perfil.cpf) if perfil.cpf else "",
+        "data_nascimento": (
+            perfil.data_nascimento.isoformat() if perfil.data_nascimento else None
+        ),
+        "documento_tipo": tipo,
+        "documento_tipo_label": labels.get(tipo, ""),
+        "documento_url": doc_url,
+        "dados_certificado_completos": perfil.dados_certificado_completos(),
+    }
+
+
 def _serializar_aluno_lista(request, u):
     vig = list(ativacoes_vigentes_qs(u).select_related("plano"))
     cursos = cursos_liberados_aluno(u)
     progresso = [_stats_progresso(u, c) for c in cursos[:20]]
-    return {
+    perfil = getattr(u, "perfil", None)
+    row = {
         "id": u.id,
         "username": u.username,
         "email": u.email,
         "first_name": u.first_name,
         "is_active": u.is_active,
-        "ra": getattr(u.perfil, "ra", None),
-        "foto_url": _foto_url(request, getattr(u, "perfil", None)),
-        "bio": getattr(u.perfil, "bio", "") or "",
+        "ra": getattr(perfil, "ra", None),
+        "foto_url": _foto_url(request, perfil),
+        "bio": getattr(perfil, "bio", "") or "",
         "ativacoes_vigentes": len(vig),
         "planos": [a.plano.nome for a in vig],
         "progresso": progresso,
     }
+    row.update(_dados_legais_perfil(request, perfil))
+    return row
 
 
 def _serializar_aluno_detalhe(request, u):
@@ -273,6 +309,7 @@ def _serializar_aluno_detalhe(request, u):
     cursos = cursos_liberados_aluno(u)
     certificados = Certificado.objects.filter(usuario=u).select_related("curso")
     vig_ids = {a.id for a in vig}
+    perfil = getattr(u, "perfil", None)
 
     def _item_ativacao(a):
         return {
@@ -285,15 +322,15 @@ def _serializar_aluno_detalhe(request, u):
             "data_ativacao": a.data_ativacao,
         }
 
-    return {
+    row = {
         "id": u.id,
         "username": u.username,
         "email": u.email,
         "first_name": u.first_name,
         "is_active": u.is_active,
-        "ra": getattr(u.perfil, "ra", None),
-        "foto_url": _foto_url(request, getattr(u, "perfil", None)),
-        "bio": getattr(u.perfil, "bio", "") or "",
+        "ra": getattr(perfil, "ra", None),
+        "foto_url": _foto_url(request, perfil),
+        "bio": getattr(perfil, "bio", "") or "",
         "ativacoes_vigentes": len(vig),
         "planos": [a.plano.nome for a in vig],
         "ativacoes": [_item_ativacao(a) for a in vig],
@@ -310,6 +347,8 @@ def _serializar_aluno_detalhe(request, u):
             for c in certificados
         ],
     }
+    row.update(_dados_legais_perfil(request, perfil))
+    return row
 
 
 class AdminAlunoListView(APIView):

@@ -146,7 +146,12 @@ export function CursoDetalhePage() {
                 </button>
               )}
               {curso.certificado_motivo && !curso.certificado && (
-                <p className="portal-muted">{curso.certificado_motivo}</p>
+                <p className="portal-muted">
+                  {curso.certificado_motivo}{" "}
+                  {curso.certificado_motivo.toLowerCase().includes("perfil") ? (
+                    <Link to="/perfil">Completar perfil</Link>
+                  ) : null}
+                </p>
               )}
             </div>
           )}

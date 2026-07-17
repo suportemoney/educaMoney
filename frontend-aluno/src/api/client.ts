@@ -9,6 +9,12 @@ export type User = {
   ra: string | null;
   foto_url: string | null;
   bio: string;
+  cpf?: string;
+  cpf_formatado?: string;
+  data_nascimento?: string | null;
+  documento_tipo?: string;
+  documento_url?: string | null;
+  dados_certificado_completos?: boolean;
   is_superuser: boolean;
   is_active?: boolean;
 };

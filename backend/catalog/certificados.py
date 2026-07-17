@@ -27,6 +27,14 @@ def _gerar_codigo() -> str:
 
 
 def aluno_elegivel_certificado(usuario: User, curso: Curso) -> tuple[bool, str]:
+    perfil = getattr(usuario, "perfil", None)
+    if not perfil or not perfil.dados_certificado_completos():
+        return (
+            False,
+            "Complete no Perfil: nome completo, CPF, data de nascimento e "
+            "documento de identidade em PDF (RG, CNH ou passaporte).",
+        )
+
     aulas = Aula.objects.filter(
         modulo__curso=curso, modulo__ativo=True, ativo=True
     )
@@ -67,9 +75,19 @@ def aluno_elegivel_certificado(usuario: User, curso: Curso) -> tuple[bool, str]:
 
 
 def montar_html_certificado(
-    nome: str, ra: str | None, curso_titulo: str, codigo: str, data_iso: str
+    nome: str,
+    ra: str | None,
+    cpf: str,
+    nascimento: str,
+    curso_titulo: str,
+    codigo: str,
+    data_iso: str,
 ) -> str:
+    from accounts.cpf import formatar_cpf
+
     ra_txt = ra or "—"
+    cpf_txt = formatar_cpf(cpf) if cpf else "—"
+    nasc_txt = nascimento or "—"
     return f"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -89,7 +107,7 @@ def montar_html_certificado(
     <h1>Certificado de conclusão</h1>
     <p>EducaMoney certifica que</p>
     <p class="nome">{nome}</p>
-    <p class="meta">RA {ra_txt}</p>
+    <p class="meta">RA {ra_txt} · CPF {cpf_txt} · Nascimento {nasc_txt}</p>
     <p>concluiu o curso</p>
     <p class="nome" style="font-size:1.4rem">{curso_titulo}</p>
     <p class="meta">Emitido em {data_iso}</p>
@@ -114,11 +132,15 @@ def emitir_certificado(usuario: User, curso: Curso) -> Certificado:
     antigo = Certificado.objects.filter(usuario=usuario, curso=curso).first()
     perfil = getattr(usuario, "perfil", None)
     ra = getattr(perfil, "ra", None) if perfil else None
+    cpf = (getattr(perfil, "cpf", None) or "") if perfil else ""
+    nasc = ""
+    if perfil and perfil.data_nascimento:
+        nasc = perfil.data_nascimento.strftime("%d/%m/%Y")
     nome = usuario.first_name or usuario.username
     codigo = antigo.codigo if antigo else _gerar_codigo()
     agora = timezone.now()
     html = montar_html_certificado(
-        nome, ra, curso.titulo, codigo, agora.strftime("%d/%m/%Y")
+        nome, ra, cpf, nasc, curso.titulo, codigo, agora.strftime("%d/%m/%Y")
     )
     if antigo:
         antigo.revogado = False

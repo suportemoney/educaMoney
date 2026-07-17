@@ -25,7 +25,8 @@ description: >-
 - `/conjuntos` trilhas (não liberam acesso sozinhas)
 - `/financas` validade + WhatsApp upgrade/renovar
 - `/secretaria` tickets
-- `/perfil` RA (read-only) + editar nome/bio/foto (`PATCH /auth/me/`)
+- `/perfil` RA (read-only) + nome/bio/foto + **dados legais** (CPF, nascimento, PDF RG/CNH/passaporte) via `PATCH /auth/me/`
+- Certificado: exige perfil completo (`dados_certificado_completos`) + aulas + prova
 - `/ativar` só se sem plano vigente (nav oculta item)
 
 ## Domínio relevante

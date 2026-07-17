@@ -374,28 +374,134 @@ a {
   background: rgba(0, 255, 136, 0.06);
 }
 
+.player-page {
+  width: 100%;
+  max-width: none;
+}
+
 .player-frame {
-  margin: 0 0 1rem;
+  position: relative;
+  margin: 0 0 0.65rem;
   border: 1px solid var(--em-line);
   border-radius: 0.75rem;
   overflow: hidden;
   background: #000;
   aspect-ratio: 16 / 9;
-  max-height: min(70vh, 640px);
+  max-height: min(72vh, 780px);
 }
 
 .player-frame video {
   width: 100%;
-  height: 100%;
+  height: calc(100% - 2.75rem);
   display: block;
   object-fit: contain;
   background: #000;
+  cursor: pointer;
+}
+
+.player-frame:fullscreen,
+.player-frame:-webkit-full-screen {
+  max-height: none;
+  aspect-ratio: auto;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+
+.player-frame:fullscreen video,
+.player-frame:-webkit-full-screen video {
+  height: calc(100% - 2.75rem);
 }
 
 .player-frame .empty-box {
   height: 100%;
   place-content: center;
   border: none;
+}
+
+/* Barra de progresso custom do player */
+.vbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto;
+  gap: 0.55rem;
+  align-items: center;
+  padding: 0.45rem 0.65rem;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.82));
+}
+
+.vbar__btn {
+  border: none;
+  background: transparent;
+  color: #f4f8ff;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0.2rem 0.35rem;
+  min-width: 2rem;
+}
+
+.vbar__btn:hover {
+  color: var(--em-green);
+}
+
+.vbar__track {
+  position: relative;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+  outline: none;
+}
+
+.vbar__track:focus-visible {
+  box-shadow: 0 0 0 2px rgba(57, 255, 158, 0.45);
+}
+
+.vbar__watched {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: rgba(94, 183, 255, 0.45);
+  pointer-events: none;
+}
+
+.vbar__played {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #39ff9e, #5eb7ff);
+  pointer-events: none;
+}
+
+.vbar__thumb {
+  position: absolute;
+  top: 50%;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-left: -0.35rem;
+  border-radius: 50%;
+  background: #f4f8ff;
+  box-shadow: 0 0 0 2px rgba(57, 255, 158, 0.55);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.vbar__time {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: rgba(244, 248, 255, 0.9);
+  white-space: nowrap;
+}
+
+.player-hint {
+  margin: 0 0 0.85rem;
+  font-size: 0.86rem;
+  color: var(--em-muted);
 }
 
 .aula-desc {
@@ -405,9 +511,10 @@ a {
 
 .player-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
-  gap: 1.25rem;
-  align-items: start;
+  grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.9fr);
+  gap: 1.5rem;
+  align-items: stretch;
+  width: 100%;
 }
 
 .player-layout__main {
@@ -417,12 +524,15 @@ a {
 .player-sidebar {
   position: sticky;
   top: 1rem;
+  align-self: start;
+  width: 100%;
+  min-height: min(70vh, 640px);
   max-height: calc(100vh - 2rem);
   overflow: auto;
   border: 1px solid var(--em-line);
   border-radius: 0.85rem;
   background: rgba(10, 22, 40, 0.65);
-  padding: 0.9rem 0.85rem 1rem;
+  padding: 1rem 1rem 1.15rem;
 }
 
 .player-sidebar__head {
@@ -533,8 +643,23 @@ a {
 
   .player-sidebar {
     position: static;
+    min-height: 0;
     max-height: none;
     order: 2;
+  }
+
+  .vbar {
+    grid-template-columns: auto 1fr auto;
+    grid-template-rows: auto auto;
+  }
+
+  .vbar__track {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .vbar__time {
+    grid-column: 2;
   }
 }
 

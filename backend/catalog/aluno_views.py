@@ -353,9 +353,30 @@ class AulaProgressoView(APIView):
             usuario=request.user, aula=aula
         )
         if "posicao_segundos" in ser.validated_data:
-            prog.posicao_segundos = ser.validated_data["posicao_segundos"]
-        if "concluida" in ser.validated_data:
-            prog.concluida = ser.validated_data["concluida"]
+            nova = ser.validated_data["posicao_segundos"]
+            # Anti-pulo via API: não aceita salto grande à frente
+            if not prog.concluida and nova > prog.posicao_segundos + 30:
+                nova = prog.posicao_segundos + 30
+            # Mantém o máximo assistido (volta no vídeo não reduz o progresso)
+            prog.posicao_segundos = max(prog.posicao_segundos, nova)
+        if "concluida" in ser.validated_data and ser.validated_data["concluida"]:
+            if not prog.concluida:
+                if aula.video:
+                    dur = aula.duracao_segundos or 0
+                    pos = prog.posicao_segundos
+                    if "posicao_segundos" in ser.validated_data:
+                        pos = max(pos, ser.validated_data["posicao_segundos"])
+                    # Exige assistir quase até o fim (tolerância 5s)
+                    if dur > 0 and pos < max(0, dur - 5):
+                        return Response(
+                            {
+                                "detail": (
+                                    "Assista o vídeo até o final para concluir a aula."
+                                )
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                prog.concluida = True
         prog.save()
         return Response(ProgressoAulaSerializer(prog).data)
 

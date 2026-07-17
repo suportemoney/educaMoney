@@ -10,6 +10,16 @@ import {
 } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 
+function formatTempo(seg: number): string {
+  const s = Math.max(0, Math.floor(seg || 0));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${r.toString().padStart(2, "0")}`;
+}
+
+/** Margem no fim do vídeo para liberar "Concluir". */
+const FIM_TOLERANCIA_S = 2;
+
 export function AulaPlayerPage() {
   const { aulaId } = useParams<{ aulaId: string }>();
   const { access } = useAuth();
@@ -20,19 +30,42 @@ export function AulaPlayerPage() {
   const [resultado, setResultado] = useState<TentativaQuiz | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const lastSent = useRef(0);
   const resumed = useRef(false);
+  const maxAssistidoRef = useRef(0);
+
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [maxAssistido, setMaxAssistido] = useState(0);
+  const [muted, setMuted] = useState(false);
+
+  const jaConcluida = Boolean(aula?.progresso?.concluida);
+  const semVideo = Boolean(aula && !aula.video_url);
+  const assistiuTudo =
+    semVideo ||
+    jaConcluida ||
+    (duration > 0 && maxAssistido >= duration - FIM_TOLERANCIA_S);
 
   const carregar = useCallback(() => {
     if (!access || !aulaId) return;
     resumed.current = false;
+    maxAssistidoRef.current = 0;
+    setMaxAssistido(0);
+    setCurrentTime(0);
+    setDuration(0);
+    setPlaying(false);
     setResultado(null);
     setRespostas({});
     setErro(null);
     apiRequest<AulaAluno>(`/aluno/aulas/${aulaId}/`, { token: access })
       .then(async (a) => {
         setAula(a);
+        const pos = a.progresso?.posicao_segundos || 0;
+        maxAssistidoRef.current = pos;
+        setMaxAssistido(pos);
         if (a.curso_id != null) {
           apiRequest<CursoDetalhe>(`/aluno/cursos/${a.curso_id}/`, {
             token: access,
@@ -70,36 +103,114 @@ export function AulaPlayerPage() {
     });
   }
 
+  function avancarMaxAssistido(t: number) {
+    if (t > maxAssistidoRef.current) {
+      maxAssistidoRef.current = t;
+      setMaxAssistido(t);
+    }
+  }
+
   function onTimeUpdate() {
     const el = videoRef.current;
     if (!el || !access || !aulaId) return;
+
+    // Trava velocidade (não pode acelerar)
+    if (el.playbackRate !== 1) {
+      el.playbackRate = 1;
+    }
+
+    const t = el.currentTime;
+    setCurrentTime(t);
+
+    if (!jaConcluida) {
+      // Só conta avanço contínuo; salto à frente é rejeitado
+      if (t <= maxAssistidoRef.current + 1.25) {
+        avancarMaxAssistido(t);
+      } else {
+        el.currentTime = maxAssistidoRef.current;
+        return;
+      }
+    }
+
     const agora = Date.now();
     if (agora - lastSent.current < 5000) return;
     lastSent.current = agora;
-    const pos = Math.floor(el.currentTime);
+    const pos = Math.floor(maxAssistidoRef.current);
     patchProgresso({ posicao_segundos: pos }).catch(() => undefined);
   }
 
   function onLoadedMetadata() {
     const el = videoRef.current;
-    if (!el || !aula || resumed.current) return;
-    const pos = aula.progresso?.posicao_segundos || 0;
-    if (pos > 0 && pos < (el.duration || Infinity) - 2) {
+    if (!el) return;
+    const dur = el.duration || 0;
+    setDuration(dur);
+    if (Number.isFinite(dur) && dur > 0 && jaConcluida) {
+      avancarMaxAssistido(dur);
+    }
+    if (!aula || resumed.current) return;
+    const pos = Math.min(
+      aula.progresso?.posicao_segundos || 0,
+      maxAssistidoRef.current
+    );
+    if (pos > 0 && pos < (dur || Infinity) - 2) {
       el.currentTime = pos;
+      setCurrentTime(pos);
     }
     resumed.current = true;
   }
 
+  function onSeeking() {
+    const el = videoRef.current;
+    if (!el || jaConcluida) return;
+    if (el.currentTime > maxAssistidoRef.current + 0.35) {
+      el.currentTime = maxAssistidoRef.current;
+    }
+  }
+
+  function onRateChange() {
+    const el = videoRef.current;
+    if (el && el.playbackRate !== 1) {
+      el.playbackRate = 1;
+    }
+  }
+
+  function togglePlay() {
+    const el = videoRef.current;
+    if (!el) return;
+    if (el.paused) {
+      el.play().catch(() => undefined);
+    } else {
+      el.pause();
+    }
+  }
+
+  function seekNaBarra(clientX: number, track: HTMLElement) {
+    const el = videoRef.current;
+    if (!el || !duration) return;
+    const rect = track.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    let alvo = ratio * duration;
+    if (!jaConcluida) {
+      // Não pode pular além do já assistido
+      alvo = Math.min(alvo, maxAssistidoRef.current);
+    }
+    el.currentTime = alvo;
+    setCurrentTime(alvo);
+  }
+
   async function concluir() {
     if (!access || !aulaId) return;
+    if (!assistiuTudo) {
+      setErro("Assista o vídeo até o final para concluir a aula.");
+      return;
+    }
     setSalvando(true);
     setErro(null);
     try {
-      const el = videoRef.current;
-      const pos = el ? Math.floor(el.currentTime) : undefined;
+      const pos = Math.floor(maxAssistidoRef.current || currentTime);
       const prog = await patchProgresso({
         concluida: true,
-        ...(pos != null ? { posicao_segundos: pos } : {}),
+        posicao_segundos: pos,
       });
       if (prog && aula) {
         setAula({ ...aula, progresso: prog });
@@ -147,9 +258,11 @@ export function AulaPlayerPage() {
   }
 
   const aulaAtualId = Number(aulaId);
+  const pctAssistido = duration > 0 ? Math.min(100, (maxAssistido / duration) * 100) : 0;
+  const pctAtual = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
 
   return (
-    <div>
+    <div className="player-page">
       <div className="page-head">
         <div>
           {aula?.curso_id != null && (
@@ -173,21 +286,121 @@ export function AulaPlayerPage() {
           <div className="player-layout__main">
             <div className="player-frame">
               {aula.video_url ? (
-                <video
-                  ref={videoRef}
-                  key={aula.id}
-                  src={aula.video_url}
-                  controls
-                  playsInline
-                  onTimeUpdate={onTimeUpdate}
-                  onLoadedMetadata={onLoadedMetadata}
-                />
+                <>
+                  <video
+                    ref={videoRef}
+                    key={aula.id}
+                    src={aula.video_url}
+                    playsInline
+                    controls={false}
+                    disablePictureInPicture
+                    controlsList="nodownload noplaybackrate"
+                    onTimeUpdate={onTimeUpdate}
+                    onLoadedMetadata={onLoadedMetadata}
+                    onSeeking={onSeeking}
+                    onRateChange={onRateChange}
+                    onPlay={() => setPlaying(true)}
+                    onPause={() => setPlaying(false)}
+                    onEnded={() => {
+                      const el = videoRef.current;
+                      if (el) avancarMaxAssistido(el.duration || maxAssistidoRef.current);
+                      setPlaying(false);
+                    }}
+                    onClick={togglePlay}
+                  />
+                  <div className="vbar">
+                    <button
+                      type="button"
+                      className="vbar__btn"
+                      onClick={togglePlay}
+                      aria-label={playing ? "Pausar" : "Reproduzir"}
+                    >
+                      {playing ? "❚❚" : "▶"}
+                    </button>
+                    <div
+                      className="vbar__track"
+                      role="slider"
+                      aria-valuemin={0}
+                      aria-valuemax={Math.floor(duration)}
+                      aria-valuenow={Math.floor(currentTime)}
+                      aria-label="Progresso do vídeo"
+                      tabIndex={0}
+                      onClick={(e) => seekNaBarra(e.clientX, e.currentTarget)}
+                      onKeyDown={(e) => {
+                        const el = videoRef.current;
+                        if (!el) return;
+                        const step = e.key === "ArrowRight" ? 5 : e.key === "ArrowLeft" ? -5 : 0;
+                        if (!step) return;
+                        e.preventDefault();
+                        let alvo = el.currentTime + step;
+                        if (!jaConcluida) {
+                          alvo = Math.min(alvo, maxAssistidoRef.current);
+                        }
+                        alvo = Math.max(0, Math.min(alvo, duration || alvo));
+                        el.currentTime = alvo;
+                        setCurrentTime(alvo);
+                      }}
+                    >
+                      <div
+                        className="vbar__watched"
+                        style={{ width: `${pctAssistido}%` }}
+                      />
+                      <div
+                        className="vbar__played"
+                        style={{ width: `${pctAtual}%` }}
+                      />
+                      <div
+                        className="vbar__thumb"
+                        style={{ left: `${pctAtual}%` }}
+                      />
+                    </div>
+                    <span className="vbar__time">
+                      {formatTempo(currentTime)} / {formatTempo(duration)}
+                    </span>
+                    <button
+                      type="button"
+                      className="vbar__btn"
+                      onClick={() => {
+                        const el = videoRef.current;
+                        if (!el) return;
+                        el.muted = !el.muted;
+                        setMuted(el.muted);
+                      }}
+                      aria-label={muted ? "Ativar som" : "Silenciar"}
+                    >
+                      {muted ? "Mudo" : "Som"}
+                    </button>
+                    <button
+                      type="button"
+                      className="vbar__btn"
+                      onClick={() => {
+                        const frame = videoRef.current?.closest(".player-frame");
+                        if (!frame) return;
+                        if (document.fullscreenElement) {
+                          document.exitFullscreen().catch(() => undefined);
+                        } else {
+                          frame.requestFullscreen?.().catch(() => undefined);
+                        }
+                      }}
+                      aria-label="Tela cheia"
+                    >
+                      Cheia
+                    </button>
+                  </div>
+                </>
               ) : (
                 <div className="empty-box">
                   <p>Vídeo ainda não disponível para esta aula.</p>
                 </div>
               )}
             </div>
+            {aula.video_url && !jaConcluida && (
+              <p className="player-hint">
+                {assistiuTudo
+                  ? "Você assistiu até o fim — pode concluir a aula."
+                  : "Assista o vídeo por completo (sem pular ou acelerar) para liberar Concluir."}
+              </p>
+            )}
             {aula.descricao && <p className="aula-desc">{aula.descricao}</p>}
 
             {(aula.materiais || []).length > 0 && (
@@ -265,13 +478,24 @@ export function AulaPlayerPage() {
                 type="button"
                 className="btn btn--primary"
                 onClick={concluir}
-                disabled={salvando || aula.progresso?.concluida}
+                disabled={
+                  salvando ||
+                  aula.progresso?.concluida ||
+                  (!semVideo && !assistiuTudo)
+                }
+                title={
+                  !assistiuTudo && !jaConcluida
+                    ? "Assista o vídeo até o final"
+                    : undefined
+                }
               >
                 {aula.progresso?.concluida
                   ? "Aula concluída"
                   : salvando
                     ? "Salvando…"
-                    : "Concluir aula"}
+                    : !assistiuTudo
+                      ? "Assista até o fim"
+                      : "Concluir aula"}
               </button>
               <div className="player-nav">
                 {aula.aula_anterior_id != null ? (
